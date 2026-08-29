@@ -4,6 +4,8 @@ import {
   initializeFirestore, 
   persistentLocalCache,
   persistentMultipleTabManager,
+  memoryLocalCache,
+  getDocFromServer,
   collection, 
   doc, 
   setDoc, 
@@ -34,27 +36,48 @@ const firebaseConfig = {
 // Initialize Firebase App singleton
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firestore with robust long-polling and persistence for sandbox containers
+// Initialize Firestore with auto-detect long polling & adaptive local cache for sandbox & web environments
 let firestoreInstance: Firestore;
+const dbId = (firebaseConfigJson as { firestoreDatabaseId?: string }).firestoreDatabaseId;
+
 try {
-  const dbId = (firebaseConfigJson as { firestoreDatabaseId?: string }).firestoreDatabaseId;
+  const options = {
+    experimentalAutoDetectLongPolling: true,
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  };
   firestoreInstance = dbId 
-    ? initializeFirestore(app, { 
-        experimentalForceLongPolling: true,
-        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-      }, dbId)
-    : initializeFirestore(app, { 
-        experimentalForceLongPolling: true,
-        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-      });
+    ? initializeFirestore(app, options, dbId)
+    : initializeFirestore(app, options);
 } catch (e) {
-  // Fallback if already initialized
-  const dbId = (firebaseConfigJson as { firestoreDatabaseId?: string }).firestoreDatabaseId;
-  firestoreInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
+  try {
+    // Fallback to memory local cache if persistent IndexedDB cache is locked or unsupported
+    const fallbackOptions = {
+      experimentalAutoDetectLongPolling: true,
+      localCache: memoryLocalCache()
+    };
+    firestoreInstance = dbId
+      ? initializeFirestore(app, fallbackOptions, dbId)
+      : initializeFirestore(app, fallbackOptions);
+  } catch (err) {
+    // Ultimate fallback if already initialized
+    firestoreInstance = dbId ? getFirestore(app, dbId) : getFirestore(app);
+  }
 }
 
 export const db: Firestore = firestoreInstance;
 export const auth = getAuth(app);
+
+// Connection test helper per Firebase Skill guidelines
+async function testFirestoreConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('offline')) {
+      console.warn('Firestore client operating in offline mode.');
+    }
+  }
+}
+testFirestoreConnection();
 
 export {
   collection,
@@ -71,3 +94,4 @@ export {
   deleteDoc, arrayUnion, arrayRemove,
   serverTimestamp
 };
+
