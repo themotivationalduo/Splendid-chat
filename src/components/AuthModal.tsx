@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { User } from '../types';
 import { registerFirebaseUser, loginFirebaseUser } from '../services/firestoreService';
 import { playGlassChimeSound } from '../services/audioService';
-import { COUNTRIES } from '../lib/countries';
+import { COUNTRIES, Country } from '../lib/countries';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -19,11 +19,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 }) => {
   const [isRegister, setIsRegister] = useState(false);
   
+  // Country & Dial Code Selection (Nigeria default)
+  const [selectedCountry, setSelectedCountry] = useState<Country>(COUNTRIES[0]);
+  const [selectedDialCode, setSelectedDialCode] = useState(COUNTRIES[0].dialCode);
+  const [isCountryPickerOpen, setIsCountryPickerOpen] = useState(false);
+  const [countrySearchQuery, setCountrySearchQuery] = useState('');
+
   // Registration Fields
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [selectedDialCode, setSelectedDialCode] = useState('+1');
   const [passcode, setPasscode] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👤');
 
@@ -35,6 +40,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   const AVATAR_OPTIONS = ['👤', '🌟', '🚀', '💎', '🔥', '⚡', '👑', '🎯', '🦊', '🌸', '🦁', '🦉'];
+
+  const filteredCountries = COUNTRIES.filter(
+    (c) =>
+      c.name.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
+      c.code.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
+      c.dialCode.includes(countrySearchQuery)
+  );
 
   const handlePasscodeChange = (val: string) => {
     const digitsOnly = val.replace(/\D/g, '').slice(0, 6);
@@ -270,34 +282,142 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </>
           )}
 
-          {/* Phone Number with Country Code */}
+          {/* Phone Number with Country Code & Searchable Country Selector */}
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <span>📱</span>
-              <span>Phone Number</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedDialCode}
-                onChange={(e) => setSelectedDialCode(e.target.value)}
-                className="h-11 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-red-500 transition-all custom-scrollbar cursor-pointer w-28 shrink-0"
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <span>📱</span>
+                <span>Phone Number</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsCountryPickerOpen(true)}
+                className="text-[11px] text-red-400 hover:text-red-300 underline font-medium flex items-center gap-1"
               >
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.dialCode}>
-                    {c.flag} {c.dialCode}
-                  </option>
-                ))}
-              </select>
+                <span>🔍 Search Country</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCountryPickerOpen(true)}
+                className="h-11 px-3 rounded-xl mirror-glass-input border border-white/10 hover:bg-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-red-500 transition-all flex items-center justify-between gap-1.5 shrink-0 cursor-pointer min-w-[125px]"
+                title="Click to search country"
+              >
+                <span className="flex items-center gap-1.5 truncate">
+                  <span className="text-base">{selectedCountry.flag}</span>
+                  <span className="font-bold text-slate-100">{selectedCountry.dialCode}</span>
+                  <span className="text-[10px] text-slate-400 font-mono">({selectedCountry.code})</span>
+                </span>
+                <span className="text-[10px] text-slate-400">▾</span>
+              </button>
+
               <input
                 type="tel"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9 ]/g, ''))}
-                placeholder="555 000 0000"
+                placeholder="801 234 5678"
                 className="flex-1 h-11 px-4 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all"
                 required
               />
             </div>
+            <p className="text-[10px] text-slate-400 truncate">
+              Country: <span className="text-slate-200 font-semibold">{selectedCountry.name} ({selectedCountry.code})</span>
+            </p>
           </div>
+
+          {/* Searchable Country Picker Modal */}
+          {isCountryPickerOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-75">
+              <div className="w-full max-w-sm rounded-3xl mirror-glass-card border border-white/15 p-4 shadow-2xl space-y-3 bg-[#121620] text-slate-100 relative max-h-[80vh] flex flex-col">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🌍</span>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Select Country Code</h3>
+                      <p className="text-[10px] text-slate-400">Search by country name, ISO code, or dial code</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCountryPickerOpen(false);
+                      setCountrySearchQuery('');
+                    }}
+                    className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors text-xs"
+                  >
+                    ❌
+                  </button>
+                </div>
+
+                {/* Country Search Bar */}
+                <div className="relative flex items-center shrink-0">
+                  <span className="absolute left-3 text-xs text-slate-400">🔍</span>
+                  <input
+                    type="text"
+                    value={countrySearchQuery}
+                    onChange={(e) => setCountrySearchQuery(e.target.value)}
+                    placeholder="Type to search (e.g. Nigeria, +234, US)..."
+                    className="w-full h-10 pl-9 pr-8 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                    autoFocus
+                  />
+                  {countrySearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setCountrySearchQuery('')}
+                      className="absolute right-3 text-xs text-slate-400 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Scrollable Country List */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 pr-1 min-h-[220px]">
+                  {filteredCountries.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-slate-400 space-y-1">
+                      <p>No matching country found</p>
+                      <p className="text-[10px] text-slate-500">Try searching "Nigeria", "+234", or "NG"</p>
+                    </div>
+                  ) : (
+                    filteredCountries.map((c) => {
+                      const isSelected = selectedCountry.code === c.code;
+                      return (
+                        <button
+                          key={c.code + c.dialCode}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCountry(c);
+                            setSelectedDialCode(c.dialCode);
+                            setIsCountryPickerOpen(false);
+                            setCountrySearchQuery('');
+                          }}
+                          className={`w-full p-2.5 rounded-xl flex items-center justify-between text-left text-xs transition-all ${
+                            isSelected
+                              ? 'bg-red-600/30 border border-red-500/60 text-white font-bold'
+                              : 'hover:bg-white/10 text-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="text-lg shrink-0">{c.flag}</span>
+                            <div className="truncate">
+                              <span className="font-semibold block truncate text-slate-100">{c.name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">Code Name: <span className="text-red-300 font-bold">{c.code}</span></span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-bold text-red-400">{c.dialCode}</span>
+                            {isSelected && <span className="text-emerald-400 font-bold">✓</span>}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 6-Digit Passcode */}
           <div className="space-y-1.5">

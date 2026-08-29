@@ -115,9 +115,29 @@
     100% { background-position: 0% 50%; }
   }
 
-  /* Reduce entire UI by 50% */
+  /* Adapt base font size to user's phone text size settings (100% respects user's preferred OS/browser scale) */
   html {
-    font-size: 8px !important;
+    font-size: 100% !important;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Dynamic viewport height and smooth text wrapping safeguards */
+  body {
+    min-height: 100dvh;
+    overflow-x: hidden;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Universal box sizing and text wrapping to prevent overlapping across display settings */
+  *, ::before, ::after {
+    box-sizing: border-box;
+  }
+
+  p, span, h1, h2, h3, h4, h5, h6, label {
+    overflow-wrap: break-word;
   }
 
   /* FAB subtle pulse */

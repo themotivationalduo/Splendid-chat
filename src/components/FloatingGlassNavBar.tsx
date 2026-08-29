@@ -18,17 +18,8 @@ export const FloatingGlassNavBar: React.FC<FloatingGlassNavBarProps> = ({
 
   useEffect(() => {
     const handleScroll = () => {
-      const currentScrollY = window.scrollY || document.documentElement.scrollTop;
-      
-      // If user is scrolling down and past initial threshold, hide nav
-      if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
-        setIsVisible(false);
-      } else {
-        // Scrolling up -> show immediately
-        setIsVisible(true);
-      }
-
-      lastScrollY.current = currentScrollY;
+      // Hide floating nav bar whenever scrolling occurs (up or down)
+      setIsVisible(false);
 
       // When user stops scrolling, automatically reveal navbar after 250ms
       if (scrollTimeoutRef.current) {
@@ -72,11 +63,11 @@ export const FloatingGlassNavBar: React.FC<FloatingGlassNavBarProps> = ({
 
   return (
     <nav
-      className={`fixed bottom-4 inset-x-0 z-40 max-w-sm mx-auto px-4 transition-all duration-75 ease-out pointer-events-none ${
+      className={`fixed bottom-3 inset-x-0 z-40 w-auto max-w-[min(280px,92vw)] mx-auto px-2 transition-all duration-300 ease-out pointer-events-none pb-[env(safe-area-inset-bottom,0px)] ${
         isVisible ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'
       }`}
     >
-      <div className="pointer-events-auto flex items-center justify-around py-2 px-3 rounded-full mirror-glass-nav border border-white/15 shadow-2xl backdrop-blur-2xl">
+      <div className="pointer-events-auto flex items-center justify-around py-1 px-2 rounded-full mirror-glass-nav border border-white/15 shadow-2xl backdrop-blur-2xl">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
 
@@ -85,29 +76,27 @@ export const FloatingGlassNavBar: React.FC<FloatingGlassNavBarProps> = ({
               key={item.id}
               id={`nav-tab-${item.id}`}
               onClick={() => onTabChange(item.id)}
-              className={`relative flex flex-col items-center justify-center py-1 px-3.5 rounded-full transition-all duration-75 select-none ${
+              className={`relative flex items-center justify-center p-1.5 rounded-full transition-all duration-75 select-none ${
                 isActive
-                  ? 'text-red-400 scale-105 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:scale-105 font-medium'
+                  ? 'text-red-400 scale-105'
+                  : 'text-slate-400 hover:text-slate-200 hover:scale-105'
               }`}
+              title={item.label}
+              aria-label={item.label}
             >
               {/* Active Indicator Glow Background */}
               {isActive && (
-                <div className="absolute inset-0 rounded-full bg-red-500/15 border border-red-500/30 -z-10 animate-in zoom-in-95 duration-75 shadow-sm" />
+                <div className="absolute inset-0 rounded-full bg-red-500/20 border border-red-500/30 -z-10 animate-in zoom-in-95 duration-75 shadow-sm" />
               )}
 
-              <div className="relative text-lg leading-tight">
+              <div className="relative text-lg leading-none">
                 <span>{item.emoji}</span>
                 {item.badge !== undefined && (
-                  <span className="absolute -top-1 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-extrabold flex items-center justify-center ring-2 ring-[#121418] animate-pulse">
+                  <span className="absolute -top-1 -right-2 min-w-[14px] h-3.5 px-0.5 rounded-full bg-red-600 text-white text-[8px] font-extrabold flex items-center justify-center ring-1 ring-[#121418] animate-pulse">
                     {item.badge}
                   </span>
                 )}
               </div>
-
-              <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
-                {item.label}
-              </span>
             </button>
           );
         })}

@@ -14,6 +14,24 @@ import {
 } from './firebase';
 import { User, Chat, Message, CallLog, PushNotification } from '../types';
 
+export function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj) || obj instanceof Date) {
+    return obj;
+  }
+  const clean: any = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      if (val && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+        clean[key] = cleanFirestoreData(val);
+      } else {
+        clean[key] = val;
+      }
+    }
+  }
+  return clean as T;
+}
+
 export function normalizePhoneNumber(phone: string): string {
   if (!phone) return '';
   return phone.replace(/[^0-9+]/g, '');
@@ -480,7 +498,7 @@ export async function sendFirestoreMessage(
   const isMedia = message.type === 'image' || message.type === 'voice';
   const expiresAt = isMedia ? now + MEDIA_EXPIRATION_MS : undefined;
 
-  const payload: any = {
+  const rawPayload: any = {
     ...message,
     id: msgDocRef.id,
     createdAt: now,
@@ -490,21 +508,25 @@ export async function sendFirestoreMessage(
   };
 
   if (expiresAt) {
-    payload.expiresAt = expiresAt;
+    rawPayload.expiresAt = expiresAt;
   }
+
+  const payload = cleanFirestoreData(rawPayload);
 
   await setDoc(msgDocRef, payload);
 
-  // Update chat summary
+  // Update chat summary securely with setDoc merge
   const chatRef = doc(db, 'chats', chatId);
-  await updateDoc(chatRef, {
-    lastMessageText: message.content || (message.type === 'image' ? '📷 Disappearing Photo (24h)' : message.type === 'voice' ? '🎤 Disappearing Voice (24h)' : '📎 Attachment'),
+  const lastMsgText = message.content || (message.type === 'image' ? '📷 Disappearing Photo (24h)' : message.type === 'voice' ? '🎤 Disappearing Voice (24h)' : '📎 Attachment');
+
+  await setDoc(chatRef, cleanFirestoreData({
+    lastMessageText: lastMsgText,
     lastMessageTime: message.timestamp,
     lastMessageSenderId: currentUserId,
     lastMessageType: message.type || 'text',
     lastMessageIsRead: false,
     updatedAt: now
-  }).catch(() => {});
+  }), { merge: true }).catch((err) => console.warn('Chat summary update warning:', err));
 
   // Clear draft for this chat
   await clearChatDraft(chatId, currentUserId);
@@ -521,7 +543,7 @@ export async function sendFirestoreMessage(
         const notifDocRef = doc(collection(db, 'notifications'));
         const bodyPreview = message.content || (message.type === 'image' ? 'Sent a 24h photo' : message.type === 'voice' ? 'Sent a 24h voice note' : 'Sent an attachment');
 
-        await setDoc(notifDocRef, {
+        await setDoc(notifDocRef, cleanFirestoreData({
           id: notifDocRef.id,
           recipientId,
           userId: recipientId,
@@ -534,7 +556,7 @@ export async function sendFirestoreMessage(
           type: 'message',
           avatar: message.senderAvatar || '💬',
           createdAt: Date.now()
-        });
+        }));
       }
     }
   } catch (notifErr) {

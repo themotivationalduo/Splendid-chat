@@ -1,4 +1,12 @@
-export const COUNTRIES = [
+export interface Country {
+  code: string;
+  dialCode: string;
+  name: string;
+  flag: string;
+}
+
+const rawCountries: Country[] = [
+  { code: 'NG', dialCode: '+234', name: 'Nigeria', flag: '🇳🇬' },
   { code: 'US', dialCode: '+1', name: 'United States', flag: '🇺🇸' },
   { code: 'CA', dialCode: '+1', name: 'Canada', flag: '🇨🇦' },
   { code: 'GB', dialCode: '+44', name: 'United Kingdom', flag: '🇬🇧' },
@@ -15,7 +23,6 @@ export const COUNTRIES = [
   { code: 'CN', dialCode: '+86', name: 'China', flag: '🇨🇳' },
   { code: 'RU', dialCode: '+7', name: 'Russia', flag: '🇷🇺' },
   { code: 'ZA', dialCode: '+27', name: 'South Africa', flag: '🇿🇦' },
-  { code: 'NG', dialCode: '+234', name: 'Nigeria', flag: '🇳🇬' },
   { code: 'EG', dialCode: '+20', name: 'Egypt', flag: '🇪🇬' },
   { code: 'SA', dialCode: '+966', name: 'Saudi Arabia', flag: '🇸🇦' },
   { code: 'AE', dialCode: '+971', name: 'United Arab Emirates', flag: '🇦🇪' },
@@ -98,4 +105,18 @@ export const COUNTRIES = [
   { code: 'NI', dialCode: '+505', name: 'Nicaragua', flag: '🇳🇮' },
   { code: 'JM', dialCode: '+1', name: 'Jamaica', flag: '🇯🇲' },
   { code: 'TT', dialCode: '+1', name: 'Trinidad & Tobago', flag: '🇹🇹' }
-].sort((a, b) => a.name.localeCompare(b.name));
+];
+
+const nigeria = rawCountries.find((c) => c.code === 'NG') || {
+  code: 'NG',
+  dialCode: '+234',
+  name: 'Nigeria',
+  flag: '🇳🇬'
+};
+
+const restSorted = rawCountries
+  .filter((c) => c.code !== 'NG')
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+export const COUNTRIES: Country[] = [nigeria, ...restSorted];
+

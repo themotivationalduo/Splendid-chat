@@ -493,17 +493,20 @@ export default function App() {
         </div>
       )}
 
-      {/* Primary Header */}
-      <Header
-        currentUser={currentUser}
-        unreadNotificationsCount={unreadNotificationsCount}
-        onOpenNotifications={() => setIsNotificationsOpen(true)}
-        onOpenProfile={() => setIsProfileOpen(true)}
-        onOpenStartNewChat={() => setIsStartNewChatOpen(true)}
-      />
+      {/* Primary Header - hidden when in ChatRoom */}
+      {!selectedChat && (
+        <Header
+          currentUser={currentUser}
+          unreadNotificationsCount={unreadNotificationsCount}
+          onOpenNotifications={() => setIsNotificationsOpen(true)}
+          onOpenProfile={() => setIsProfileOpen(true)}
+          onOpenStartNewChat={() => setIsStartNewChatOpen(true)}
+        />
+      )}
 
-      {/* Main Content Area based on Active Tab */}
-      <main className="flex-1 flex flex-col max-w-md mx-auto w-full">
+      {/* Main Content Area based on Active Tab - hidden when in ChatRoom */}
+      {!selectedChat && (
+        <main className="flex-1 flex flex-col w-full max-w-xl mx-auto pt-16 pb-20 px-1 sm:px-3 min-w-0">
         {activeTab === 'chats' && (
           <>
             {/* Contacts & Conversations Search Bar */}
@@ -897,6 +900,7 @@ export default function App() {
           </div>
         )}
       </main>
+      )}
 
       {/* Floating Bottom Navigation Bar */}
       {!selectedChat && (

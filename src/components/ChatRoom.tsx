@@ -181,6 +181,21 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
 
   const [allUsersState, setAllUsersState] = useState<User[]>([]);
 
+  // Float and hide top/bottom bars on chat scroll
+  const [isBarsVisible, setIsBarsVisible] = useState(true);
+  const chatScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleChatScroll = () => {
+    setIsBarsVisible(false);
+
+    if (chatScrollTimeoutRef.current) {
+      clearTimeout(chatScrollTimeoutRef.current);
+    }
+    chatScrollTimeoutRef.current = setTimeout(() => {
+      setIsBarsVisible(true);
+    }, 250);
+  };
+
   useEffect(() => {
     const unsub = subscribeToUsers((users) => {
       setAllUsersState(users);
@@ -240,45 +255,49 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   const currentWallpaper = WALLPAPER_OPTIONS.find(w => w.id === currentUser.wallpaper) || WALLPAPER_OPTIONS[0];
 
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col ${currentWallpaper.class} text-slate-100 antialiased overflow-hidden relative`}>
+    <div className={`fixed inset-0 h-[100dvh] w-[100dvw] z-50 flex flex-col ${currentWallpaper.class} text-slate-100 antialiased overflow-hidden relative`}>
       {currentWallpaper.pattern && (
         <div className="absolute inset-0 pointer-events-none opacity-10 flex items-center justify-center text-7xl font-black select-none overflow-hidden">
           <div className="whitespace-nowrap">{currentWallpaper.pattern} {currentWallpaper.pattern}</div>
         </div>
       )}
-      {/* Top Navigation Bar - WhatsApp Style */}
-      <header className="shrink-0 w-full px-3 py-2 bg-[#0b141a] border-b border-white/10 flex items-center justify-between z-20">
-        <div className="flex items-center gap-2 min-w-0">
+      {/* Top Navigation Bar - WhatsApp Style Floating Glass */}
+      <header
+        className={`fixed top-2 inset-x-2 z-40 max-w-4xl mx-auto px-2 py-1.5 rounded-2xl mirror-glass-nav border border-white/15 shadow-2xl backdrop-blur-2xl transition-all duration-300 ease-out flex items-center justify-between pt-[max(0.375rem,env(safe-area-inset-top,0px))] ${
+          isBarsVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : '-translate-y-24 opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
           <button
             id="chat-back-btn"
             onClick={onBack}
-            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors shrink-0"
+            className="p-1 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors shrink-0"
             title="Back to conversations"
           >
-            <span className="text-xl font-bold">←</span>
+            <span className="text-lg font-bold">←</span>
           </button>
 
           {/* Recipient Profile & Info */}
           <div
             id="chat-header-user-profile-btn"
             onClick={handleHeaderProfileClick}
-            className="flex items-center gap-2.5 min-w-0 cursor-pointer p-1 -m-1 rounded-xl hover:bg-white/5 transition-all group"
+            className="flex items-center gap-2 min-w-0 cursor-pointer p-0.5 -m-0.5 rounded-xl hover:bg-white/5 transition-all group"
             title="View contact info & phone number"
           >
             <div className="relative shrink-0">
-              <div className="w-10 h-10 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-lg overflow-hidden shadow">
+              <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-sm overflow-hidden shadow">
                 <span>{chat.avatar || '👤'}</span>
               </div>
               {chat.status === 'online' && (
-                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0b141a]" />
+                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#0b141a]" />
               )}
             </div>
 
             <div className="min-w-0">
-              <h3 className="text-base font-bold text-white truncate flex items-center gap-1.5">
+              <h3 className="text-sm font-bold text-white truncate flex items-center gap-1">
                 <span>{displayAccountName}</span>
               </h3>
-              <p className="text-[11px] text-slate-400 truncate">
+              <p className="text-[10px] text-slate-400 truncate leading-tight">
                 {isPeerTyping ? (
                   <span className="text-cyan-400 font-semibold animate-pulse">
                     {peerTypingName ? `${peerTypingName} is typing...` : 'typing...'}
@@ -292,17 +311,17 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
         </div>
 
         {/* Right Header Action Icons */}
-        <div className="flex items-center gap-1 shrink-0 select-none">
+        <div className="flex items-center gap-0.5 shrink-0 select-none">
           {/* Voice Call with small dropdown indicator */}
           <div className="flex items-center">
             <button
               id="start-voice-call-btn"
               onClick={() => onStartCall(chat, false)}
-              className="p-2 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-lg flex items-center gap-0.5"
+              className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base flex items-center gap-0.5"
               title="Start Voice Call"
             >
               <span>📞</span>
-              <span className="text-[10px] opacity-70">▾</span>
+              <span className="text-[9px] opacity-70">▾</span>
             </button>
           </div>
 
@@ -310,7 +329,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           <button
             id="start-video-call-btn"
             onClick={() => onStartCall(chat, true)}
-            className="p-2 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-lg"
+            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base"
             title="Start Video Call"
           >
             <span>📹</span>
@@ -320,7 +339,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           <button
             id="chat-info-btn"
             onClick={handleHeaderProfileClick}
-            className="p-2 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-lg font-bold"
+            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base font-bold"
             title="Options & Info"
           >
             <span>⋮</span>
@@ -363,7 +382,10 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
       )}
 
       {/* Messages Stream Container */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar">
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar pt-16 pb-16"
+        onScroll={handleChatScroll}
+      >
         {messages.length === 0 ? (
           <div className="py-16 text-center text-slate-400 space-y-2">
             <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-2xl shadow-inner">
@@ -467,7 +489,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                             </div>
                           )}
 
-                          <p className="text-[13.5px] leading-relaxed break-words whitespace-pre-wrap font-normal">
+                          <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap font-normal">
                             {msg.content.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
                               if (part.match(/^https?:\/\//)) {
                                 return (
@@ -760,15 +782,19 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
       />
 
       {/* Floating Bottom Input Bar - WhatsApp Style */}
-      <footer className="shrink-0 w-full p-2.5 z-20">
-        <form onSubmit={handleSendText} className="flex items-center gap-2 max-w-xl mx-auto">
+      <footer
+        className={`fixed bottom-2 inset-x-2 z-40 max-w-2xl mx-auto transition-all duration-300 ease-out pb-[max(0.375rem,env(safe-area-inset-bottom,0px))] ${
+          isBarsVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : 'translate-y-24 opacity-0 pointer-events-none'
+        }`}
+      >
+        <form onSubmit={handleSendText} className="flex items-center gap-1.5 w-full max-w-2xl mx-auto">
           {/* Main Connected Capsule */}
-          <div className="flex-1 bg-[#202c33] border border-white/10 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg">
+          <div className="flex-1 bg-[#202c33] border border-white/10 rounded-full px-2.5 py-0.5 flex items-center gap-1.5 shadow-md">
             {/* Emoji Button */}
             <button
               type="button"
               onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-              className="p-1.5 text-slate-300 hover:text-white transition-colors text-lg shrink-0"
+              className="p-1 text-slate-300 hover:text-white transition-colors text-base shrink-0"
               title="Emoji & Attachments"
             >
               <span>😊</span>
@@ -781,7 +807,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
               value={inputText}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder="Message"
-              className="flex-1 bg-transparent border-none text-white text-sm focus:outline-none placeholder-slate-400 font-normal py-2"
+              className="flex-1 bg-transparent border-none text-white text-xs sm:text-sm focus:outline-none placeholder-slate-400 font-normal py-1"
             />
 
             {/* Paperclip Button */}
@@ -789,7 +815,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
               type="button"
               id="chat-attach-btn"
               onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-              className="p-1.5 text-slate-300 hover:text-white transition-colors text-lg shrink-0"
+              className="p-1 text-slate-300 hover:text-white transition-colors text-base shrink-0"
               title="Attach Media"
             >
               <span>📎</span>
@@ -799,7 +825,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 text-slate-300 hover:text-white transition-colors text-lg shrink-0"
+              className="p-1 text-slate-300 hover:text-white transition-colors text-base shrink-0"
               title="Take/Upload Photo"
             >
               <span>📷</span>
@@ -811,7 +837,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
             <button
               type="submit"
               id="chat-send-btn"
-              className="w-12 h-12 rounded-full bg-[#701a75] hover:bg-[#86198f] text-white flex items-center justify-center text-xl shadow-lg shadow-purple-950/50 transition-all active:scale-95 shrink-0"
+              className="w-9 h-9 rounded-full bg-[#701a75] hover:bg-[#86198f] text-white flex items-center justify-center text-base shadow-md shadow-purple-950/50 transition-all active:scale-95 shrink-0"
               title="Send Message"
             >
               <span>🚀</span>
@@ -821,7 +847,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
               type="button"
               id="chat-mic-btn"
               onClick={onOpenVoiceRecorder}
-              className="w-12 h-12 rounded-full bg-[#701a75] hover:bg-[#86198f] text-white flex items-center justify-center text-xl shadow-lg shadow-purple-950/50 transition-all active:scale-95 shrink-0"
+              className="w-9 h-9 rounded-full bg-[#701a75] hover:bg-[#86198f] text-white flex items-center justify-center text-base shadow-md shadow-purple-950/50 transition-all active:scale-95 shrink-0"
               title="Record Voice Note"
             >
               <span>🎤</span>
