@@ -5,13 +5,15 @@ interface AudioVoicePlayerProps {
   duration?: number;
   waveData?: number[];
   isUserMessage?: boolean;
+  senderAvatar?: string;
 }
 
 export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
   audioUrl,
-  duration = 14,
+  duration = 17,
   waveData = [30, 50, 80, 60, 90, 45, 70, 85, 40, 65, 95, 30, 75, 55, 80, 40, 60, 85, 50, 70, 90, 40, 60, 30],
-  isUserMessage = false
+  isUserMessage = false,
+  senderAvatar = '👤'
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -57,7 +59,7 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="flex items-center gap-3 py-1 px-1 min-w-[200px] max-w-xs select-none">
+    <div className="flex items-center gap-3 py-1.5 px-1 min-w-[240px] max-w-xs select-none">
       {audioUrl && (
         <audio
           ref={audioRef}
@@ -69,21 +71,22 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
         />
       )}
 
-      {/* Play/Pause Glass Button */}
+      {/* Play/Pause Button */}
       <button
         onClick={handleTogglePlay}
-        className={`w-9 h-9 rounded-2xl flex items-center justify-center transition-all shrink-0 text-sm ${
-          isUserMessage
-            ? 'bg-white text-red-600 shadow-md hover:bg-slate-100'
-            : 'bg-red-600 text-white shadow-md hover:bg-red-500 shadow-red-600/30'
-        }`}
+        className="w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 text-slate-100 hover:text-white hover:scale-105 active:scale-95"
       >
-        <span>{isPlaying ? '⏸️' : '▶️'}</span>
+        <span className="text-2xl">{isPlaying ? '⏸' : '▶'}</span>
       </button>
 
-      {/* Waveform Bars */}
-      <div className="flex-1 flex flex-col justify-center gap-1.5">
-        <div className="flex items-center gap-0.5 h-6">
+      {/* Waveform & Progress Bar */}
+      <div className="flex-1 flex flex-col justify-center gap-1">
+        <div className="relative flex items-center gap-0.5 h-6">
+          {/* Blue progress dot indicator */}
+          <div
+            className="absolute -top-1 w-3 h-3 rounded-full bg-cyan-400 border border-slate-900 z-10 shadow-sm transition-all duration-75"
+            style={{ left: `calc(${progressPercent}% - 6px)` }}
+          />
           {waveData.map((barHeight, idx) => {
             const barProgress = (idx / waveData.length) * 100;
             const isFilled = barProgress <= progressPercent;
@@ -93,14 +96,8 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
                 key={idx}
                 className="w-1 rounded-full transition-all duration-75"
                 style={{
-                  height: `${Math.max(20, Math.min(100, barHeight))}%`,
-                  backgroundColor: isFilled
-                    ? isUserMessage
-                      ? '#FFFFFF'
-                      : '#EF4444'
-                    : isUserMessage
-                    ? 'rgba(255, 255, 255, 0.3)'
-                    : 'rgba(255, 255, 255, 0.15)'
+                  height: `${Math.max(25, Math.min(100, barHeight))}%`,
+                  backgroundColor: isFilled ? '#38bdf8' : 'rgba(255, 255, 255, 0.3)'
                 }}
               />
             );
@@ -108,14 +105,21 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
         </div>
 
         {/* Time duration indicator */}
-        <div className="flex items-center justify-between text-[11px] font-medium opacity-80">
-          <span className="flex items-center gap-1">
-            <span>🎤</span>
-            <span>Voice Memo</span>
-          </span>
+        <div className="flex items-center justify-between text-[11px] font-medium text-slate-300 opacity-90">
           <span>{isPlaying ? formatTime(currentTime) : formatTime(duration)}</span>
+        </div>
+      </div>
+
+      {/* Avatar Badge on right */}
+      <div className="relative shrink-0 ml-1">
+        <div className="w-10 h-10 rounded-full bg-slate-800 border border-white/20 flex items-center justify-center text-lg overflow-hidden shadow">
+          {senderAvatar}
+        </div>
+        <div className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-[9px] font-bold shadow">
+          🎙
         </div>
       </div>
     </div>
   );
 };
+

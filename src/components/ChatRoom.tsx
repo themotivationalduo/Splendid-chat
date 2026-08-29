@@ -246,46 +246,41 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           <div className="whitespace-nowrap">{currentWallpaper.pattern} {currentWallpaper.pattern}</div>
         </div>
       )}
-      {/* Top Glass Navigation Bar */}
-      <header className="shrink-0 w-full px-3 py-2.5 mirror-glass border-b border-white/10 flex items-center justify-between z-20">
-        <div className="flex items-center gap-2.5 min-w-0">
+      {/* Top Navigation Bar - WhatsApp Style */}
+      <header className="shrink-0 w-full px-3 py-2 bg-[#0b141a] border-b border-white/10 flex items-center justify-between z-20">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             id="chat-back-btn"
             onClick={onBack}
-            className="w-9 h-9 rounded-full text-slate-300 hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center text-lg select-none shrink-0"
+            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors shrink-0"
             title="Back to conversations"
           >
-            <span>⬅️</span>
+            <span className="text-xl font-bold">←</span>
           </button>
 
-          {/* Clickable Peer Profile Area in Header */}
+          {/* Recipient Profile & Info */}
           <div
             id="chat-header-user-profile-btn"
             onClick={handleHeaderProfileClick}
-            className="flex items-center gap-2.5 min-w-0 select-none cursor-pointer p-1 -m-1 rounded-2xl hover:bg-white/5 transition-all group"
+            className="flex items-center gap-2.5 min-w-0 cursor-pointer p-1 -m-1 rounded-xl hover:bg-white/5 transition-all group"
             title="View contact info & phone number"
           >
             <div className="relative shrink-0">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#1e2330] to-[#121620] border border-white/10 group-hover:border-red-500/50 flex items-center justify-center text-xl shadow-md transition-all">
+              <div className="w-10 h-10 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-lg overflow-hidden shadow">
                 <span>{chat.avatar || '👤'}</span>
               </div>
-              <span
-                className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121418] ${
-                  chat.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
-                }`}
-              />
+              {chat.status === 'online' && (
+                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0b141a]" />
+              )}
             </div>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-bold text-slate-100 group-hover:text-red-400 transition-colors truncate">
-                  {displayAccountName}
-                </h3>
-                <span className="text-[10px] text-slate-400 opacity-60 group-hover:opacity-100">ℹ️</span>
-              </div>
-              <p className="text-[11px] text-slate-400 flex items-center gap-1">
+              <h3 className="text-base font-bold text-white truncate flex items-center gap-1.5">
+                <span>{displayAccountName}</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 truncate">
                 {isPeerTyping ? (
-                  <span className="text-red-400 font-semibold animate-pulse">
+                  <span className="text-cyan-400 font-semibold animate-pulse">
                     {peerTypingName ? `${peerTypingName} is typing...` : 'typing...'}
                   </span>
                 ) : (
@@ -297,45 +292,38 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
         </div>
 
         {/* Right Header Action Icons */}
-        <div className="flex items-center gap-1.5 shrink-0 select-none">
-          {/* Media Gallery Button */}
-          <button
-            id="chat-media-btn"
-            onClick={() => setIsMediaGalleryOpen(true)}
-            className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors flex items-center justify-center text-base"
-            title="Media Gallery"
-          >
-            <span>🖼️</span>
-          </button>
-
-          {/* View Profile Info Button */}
-          <button
-            id="chat-info-btn"
-            onClick={handleHeaderProfileClick}
-            className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors flex items-center justify-center text-base"
-            title="Contact Info"
-          >
-            <span>ℹ️</span>
-          </button>
-
-          {/* Voice Call */}
-          <button
-            id="start-voice-call-btn"
-            onClick={() => onStartCall(chat, false)}
-            className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-emerald-400 hover:text-white transition-colors flex items-center justify-center text-base"
-            title="Start Voice Call"
-          >
-            <span>📞</span>
-          </button>
+        <div className="flex items-center gap-1 shrink-0 select-none">
+          {/* Voice Call with small dropdown indicator */}
+          <div className="flex items-center">
+            <button
+              id="start-voice-call-btn"
+              onClick={() => onStartCall(chat, false)}
+              className="p-2 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-lg flex items-center gap-0.5"
+              title="Start Voice Call"
+            >
+              <span>📞</span>
+              <span className="text-[10px] opacity-70">▾</span>
+            </button>
+          </div>
 
           {/* Video Call */}
           <button
             id="start-video-call-btn"
             onClick={() => onStartCall(chat, true)}
-            className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-white transition-colors flex items-center justify-center text-base"
+            className="p-2 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-lg"
             title="Start Video Call"
           >
             <span>📹</span>
+          </button>
+
+          {/* Options / Media Gallery (3-Dots Menu) */}
+          <button
+            id="chat-info-btn"
+            onClick={handleHeaderProfileClick}
+            className="p-2 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-lg font-bold"
+            title="Options & Info"
+          >
+            <span>⋮</span>
           </button>
         </div>
       </header>
@@ -400,14 +388,24 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                 onTouchEnd={(e) => handleTouchEnd(e, msg)}
                 className={`flex flex-col ${isUser ? 'items-end animate-in slide-in-from-right-4 fade-in' : 'items-start animate-in slide-in-from-left-4 fade-in'} group relative transition-all duration-75`}
               >
-                {/* Message Bubble Container */}
-                <div
-                  className={`relative max-w-[85%] sm:max-w-[75%] rounded-2xl p-3 shadow-md transition-all ${
-                    isUser
-                      ? 'bg-gradient-to-br from-red-600 to-rose-700 text-white rounded-br-none shadow-red-950/40'
-                      : 'mirror-glass-card text-slate-100 rounded-bl-none border border-white/10'
-                  }`}
-                >
+                {/* Message Bubble Container with Quick Side Action */}
+                <div className="flex items-center gap-2 max-w-[85%] sm:max-w-[75%]">
+                  {!isUser && (
+                    <button
+                      onClick={() => onOpenForward && onOpenForward(msg)}
+                      className="w-7 h-7 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                      title="Quick Forward"
+                    >
+                      <span>↪</span>
+                    </button>
+                  )}
+                  <div
+                    className={`relative w-full rounded-2xl p-3 shadow-md transition-all ${
+                      isUser
+                        ? 'bg-[#701a75] text-white rounded-tr-xs shadow-purple-950/40 border border-purple-500/20'
+                        : 'bg-[#202c33] text-[#e9edef] rounded-tl-xs border border-white/10'
+                    }`}
+                  >
                   {/* Forwarded Header Banner */}
                   {msg.isForwarded && (
                     <div className="flex items-center gap-1 text-[10px] text-red-300 font-semibold mb-1 opacity-90">
@@ -445,9 +443,51 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
 
                   {/* Content Rendering based on Type */}
                   {msg.type === 'text' && (
-                    <p className="text-[13.5px] leading-relaxed break-words whitespace-pre-wrap font-normal">
-                      {msg.content}
-                    </p>
+                    <div className="space-y-1">
+                      {/* Check if message is a deleted message marker */}
+                      {msg.content === 'You deleted this message' || msg.isDeleted ? (
+                        <div className="flex items-center gap-2 text-xs italic opacity-85 py-0.5">
+                          <span className="text-base font-normal opacity-90">🚫</span>
+                          <span>You deleted this message</span>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Link Preview Card if text contains a URL */}
+                          {(msg.content.includes('http://') || msg.content.includes('https://') || msg.content.includes('.com')) && (
+                            <div className="bg-black/30 border border-white/10 rounded-xl p-2.5 mb-1.5 space-y-1 text-xs">
+                              <p className="font-semibold text-slate-200 text-[11px] truncate">
+                                Securely Sell Gift Cards with Lightning Speed
+                              </p>
+                              <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                <span>🔗</span>
+                                <span className="underline truncate">
+                                  {msg.content.match(/(https?:\/\/[^\s]+)/)?.[0] || 'cardcosmic.com'}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          <p className="text-[13.5px] leading-relaxed break-words whitespace-pre-wrap font-normal">
+                            {msg.content.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
+                              if (part.match(/^https?:\/\//)) {
+                                return (
+                                  <a
+                                    key={i}
+                                    href={part}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-pink-300 underline underline-offset-2 hover:text-pink-200 font-medium break-all"
+                                  >
+                                    {part}
+                                  </a>
+                                );
+                              }
+                              return part;
+                            })}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   )}
 
                   {msg.type === 'image' && (
@@ -480,9 +520,10 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                   {msg.type === 'voice' && (
                     <AudioVoicePlayer
                       audioUrl={msg.mediaUrl}
-                      duration={msg.mediaMeta?.duration || 14}
+                      duration={msg.mediaMeta?.duration || 17}
                       waveData={msg.mediaMeta?.waveData}
                       isUserMessage={isUser}
+                      senderAvatar={isUser ? currentUser.avatar : chat.avatar || '👤'}
                     />
                   )}
 
@@ -538,6 +579,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                     )}
                   </div>
                 </div>
+              </div>
 
                 {/* Quick Actions (Reactions, Forward, Reply, Delete) */}
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 mt-1 px-1 z-10">
@@ -717,40 +759,59 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
         className="hidden"
       />
 
-      {/* Floating Bottom Input Bar */}
-      <footer className="shrink-0 w-full p-3 mirror-glass-input backdrop-blur-2xl border-t border-white/10 z-20">
+      {/* Floating Bottom Input Bar - WhatsApp Style */}
+      <footer className="shrink-0 w-full p-2.5 z-20">
         <form onSubmit={handleSendText} className="flex items-center gap-2 max-w-xl mx-auto">
-          {/* Attachment Toggle Button */}
-          <button
-            type="button"
-            id="chat-attach-btn"
-            onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-            className={`w-11 h-11 rounded-full transition-all shrink-0 flex items-center justify-center text-lg ${
-              showAttachmentMenu
-                ? 'bg-red-600 text-white'
-                : 'mirror-glass-input text-slate-300 hover:text-white hover:mirror-glass-input border border-white/10'
-            }`}
-            title="Attach 24h Media"
-          >
-            <span>{showAttachmentMenu ? '❌' : '📎'}</span>
-          </button>
+          {/* Main Connected Capsule */}
+          <div className="flex-1 bg-[#202c33] border border-white/10 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg">
+            {/* Emoji Button */}
+            <button
+              type="button"
+              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              className="p-1.5 text-slate-300 hover:text-white transition-colors text-lg shrink-0"
+              title="Emoji & Attachments"
+            >
+              <span>😊</span>
+            </button>
 
-          {/* Text Input */}
-          <input
-            id="chat-message-input"
-            type="text"
-            value={inputText}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 h-11 px-4 rounded-full mirror-glass-input border border-white/10 text-slate-100 placeholder-slate-400 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-red-500/50 transition-all"
-          />
+            {/* Message Input */}
+            <input
+              id="chat-message-input"
+              type="text"
+              value={inputText}
+              onChange={(e) => handleInputChange(e.target.value)}
+              placeholder="Message"
+              className="flex-1 bg-transparent border-none text-white text-sm focus:outline-none placeholder-slate-400 font-normal py-2"
+            />
 
-          {/* Voice Record Button or Send Button */}
+            {/* Paperclip Button */}
+            <button
+              type="button"
+              id="chat-attach-btn"
+              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              className="p-1.5 text-slate-300 hover:text-white transition-colors text-lg shrink-0"
+              title="Attach Media"
+            >
+              <span>📎</span>
+            </button>
+
+            {/* Camera Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1.5 text-slate-300 hover:text-white transition-colors text-lg shrink-0"
+              title="Take/Upload Photo"
+            >
+              <span>📷</span>
+            </button>
+          </div>
+
+          {/* Standalone Circular Purple Action Button (Mic / Send) */}
           {inputText.trim() ? (
             <button
               type="submit"
               id="chat-send-btn"
-              className="w-11 h-11 rounded-full bg-gradient-to-tr from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white flex items-center justify-center text-lg shadow-lg shadow-red-600/30 transition-all active:scale-95 shrink-0"
+              className="w-12 h-12 rounded-full bg-[#701a75] hover:bg-[#86198f] text-white flex items-center justify-center text-xl shadow-lg shadow-purple-950/50 transition-all active:scale-95 shrink-0"
               title="Send Message"
             >
               <span>🚀</span>
@@ -760,8 +821,8 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
               type="button"
               id="chat-mic-btn"
               onClick={onOpenVoiceRecorder}
-              className="w-11 h-11 rounded-full bg-gradient-to-tr from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white flex items-center justify-center text-lg shadow-lg shadow-red-600/30 transition-all active:scale-95 shrink-0"
-              title="Record 24h Voice Memo"
+              className="w-12 h-12 rounded-full bg-[#701a75] hover:bg-[#86198f] text-white flex items-center justify-center text-xl shadow-lg shadow-purple-950/50 transition-all active:scale-95 shrink-0"
+              title="Record Voice Note"
             >
               <span>🎤</span>
             </button>
