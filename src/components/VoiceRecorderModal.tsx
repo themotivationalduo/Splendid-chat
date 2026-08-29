@@ -33,7 +33,7 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
       if (success) {
         setIsRecording(true);
       } else {
-        setMicPermissionError('Microphone access was denied or is restricted in this window. Please allow microphone permissions in browser settings, or use simulated demo voice memo below.');
+        setMicPermissionError('Microphone access was denied or is restricted in this window. Please allow microphone permissions in system settings, or use simulated demo voice memo below.');
       }
     });
   };

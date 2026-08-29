@@ -16,7 +16,7 @@ export function unregisterNotificationListener() {
  */
 export async function requestPushPermission(): Promise<NotificationPermission> {
   if (!('Notification' in window)) {
-    console.warn('This browser does not support desktop notifications');
+    console.warn('This device does not support system push notifications');
     return 'denied';
   }
 

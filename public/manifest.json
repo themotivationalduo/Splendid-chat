@@ -1,0 +1,17 @@
+{
+  "short_name": "SplendidChat",
+  "name": "SPLENDID CHAT",
+  "description": "A modern messaging app with Firebase phone & passcode authentication, mirror glass aesthetics, real-time push notifications, voice notes, and media attachments.",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#121418",
+  "theme_color": "#dc2626",
+  "display": "standalone",
+  "orientation": "portrait"
+}

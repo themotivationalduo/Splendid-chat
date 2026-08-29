@@ -64,12 +64,12 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           </button>
         </div>
 
-        {/* Browser Push Permission Bar */}
+        {/* Push Permission Bar */}
         <div className="p-3.5 rounded-2xl mirror-glass-input border border-white/10 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2.5">
             <span className="text-xl">✨</span>
             <div>
-              <span className="font-semibold text-slate-200 block">Browser Push Notifications</span>
+              <span className="font-semibold text-slate-200 block">System Push Notifications</span>
               <span className="text-[11px] text-slate-400 capitalize">Status: {permissionStatus}</span>
             </div>
           </div>

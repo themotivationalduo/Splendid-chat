@@ -115,7 +115,7 @@
     100% { background-position: 0% 50%; }
   }
 
-  /* Adapt base font size to user's phone text size settings (100% respects user's preferred OS/browser scale) */
+  /* Adapt base font size to user's phone text size settings (100% respects user's preferred OS text scale) */
   html {
     font-size: 100% !important;
     -webkit-text-size-adjust: 100%;
