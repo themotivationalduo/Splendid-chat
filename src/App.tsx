@@ -57,6 +57,13 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('splendid_chat_theme', theme);
+    if (theme === 'light') {
+      document.documentElement.classList.add('light', 'light-theme');
+      document.documentElement.classList.remove('dark', 'dark-theme');
+    } else {
+      document.documentElement.classList.add('dark', 'dark-theme');
+      document.documentElement.classList.remove('light', 'light-theme');
+    }
   }, [theme]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -460,7 +467,7 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen animated-gradient-bg ${theme === 'light' ? 'light-theme text-slate-900' : 'text-slate-100'} font-['Plus_Jakarta_Sans',sans-serif] flex flex-col relative overflow-x-hidden selection:bg-red-500/30 selection:text-red-200`}>
+    <div className={`min-h-screen animated-gradient-bg ${theme === 'light' ? 'light-theme text-black' : 'dark-theme text-slate-100'} font-['Plus_Jakarta_Sans',sans-serif] flex flex-col relative overflow-x-hidden selection:bg-red-500/30 selection:text-red-200`}>
       {/* Real-Time Push Notification Glass Toast */}
       {inAppToast && (
         <div

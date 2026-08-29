@@ -155,7 +155,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
                   <Picker
                     data={data}
                     onEmojiSelect={handleUpdateAvatar}
-                    theme="dark"
+                    theme={document.documentElement.classList.contains('light') ? 'light' : 'dark'}
                     previewPosition="none"
                     skinTonePosition="none"
                   />
