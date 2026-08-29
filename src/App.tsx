@@ -44,7 +44,8 @@ import {
   forwardFirestoreMessage,
   subscribeToUsers,
   updateUserPresence,
-  togglePinMessage
+  togglePinMessage,
+  autoCleanupExpiredMediaForUser
 } from './services/firestoreService';
 import { playGlassChimeSound, RecordingResult } from './services/audioService';
 
@@ -138,6 +139,16 @@ export default function App() {
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
       updateUserPresence(currentUser.id, 'offline', `Last seen today at ${timeStr}`);
     };
+  }, [currentUser?.id]);
+
+  // Automatic background cleanup for expired media, stickers, emojis & GIFs
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    autoCleanupExpiredMediaForUser(currentUser.id);
+    const cleanupInterval = setInterval(() => {
+      autoCleanupExpiredMediaForUser(currentUser.id);
+    }, 60000); // Check and purge expired media automatically every 60s
+    return () => clearInterval(cleanupInterval);
   }, [currentUser?.id]);
 
   // Real-time Firestore Users list for contacts and directory

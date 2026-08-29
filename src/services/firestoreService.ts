@@ -431,6 +431,25 @@ export async function createOrGetFirestoreChat(
 
 export const MEDIA_EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 Hours in Milliseconds
 
+export function isExpiringMediaOrStickerOrEmoji(data: any): boolean {
+  if (data.type === 'image' || data.type === 'voice' || data.type === 'file' || !!data.mediaUrl) {
+    return true;
+  }
+  if (data.content && typeof data.content === 'string') {
+    const c = data.content;
+    if (
+      c.includes('giphy.com') ||
+      c.includes('unsplash.com') ||
+      c.includes('Sticker') ||
+      c.includes('GIF') ||
+      /^(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})+$/u.test(c.trim())
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function subscribeToChatMessages(
   chatId: string,
   callback: (messages: Message[]) => void
@@ -445,10 +464,10 @@ export function subscribeToChatMessages(
     snapshot.forEach(docSnap => {
       const d = docSnap.data();
       const createdAt = d.createdAt || now;
-      const isMedia = d.type === 'image' || d.type === 'voice';
-      const expiresAt = d.expiresAt || (isMedia ? createdAt + MEDIA_EXPIRATION_MS : undefined);
+      const isExpiring = isExpiringMediaOrStickerOrEmoji(d);
+      const expiresAt = d.expiresAt || (isExpiring ? createdAt + MEDIA_EXPIRATION_MS : undefined);
 
-      // Check if 24h media has expired -> automatically delete from Firestore & exclude from stream
+      // Check if media/sticker/emoji/GIF has expired -> automatically delete from Firestore & exclude from stream
       if (expiresAt && now >= expiresAt) {
         deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id)).catch(() => {});
         return;
@@ -495,8 +514,8 @@ export async function sendFirestoreMessage(
   const msgDocRef = doc(messagesRef);
 
   const now = Date.now();
-  const isMedia = message.type === 'image' || message.type === 'voice';
-  const expiresAt = isMedia ? now + MEDIA_EXPIRATION_MS : undefined;
+  const isExpiring = isExpiringMediaOrStickerOrEmoji(message);
+  const expiresAt = isExpiring ? now + MEDIA_EXPIRATION_MS : undefined;
 
   const rawPayload: any = {
     ...message,
@@ -517,7 +536,7 @@ export async function sendFirestoreMessage(
 
   // Update chat summary securely with setDoc merge
   const chatRef = doc(db, 'chats', chatId);
-  const lastMsgText = message.content || (message.type === 'image' ? '📷 Disappearing Photo (24h)' : message.type === 'voice' ? '🎤 Disappearing Voice (24h)' : '📎 Attachment');
+  const lastMsgText = message.content || (message.type === 'image' ? '📷 Photo' : message.type === 'voice' ? '🎤 Voice Note' : '📎 Attachment');
 
   await setDoc(chatRef, cleanFirestoreData({
     lastMessageText: lastMsgText,
@@ -736,6 +755,108 @@ export async function toggleMessageReaction(
 export async function deleteFirestoreMessage(chatId: string, messageId: string): Promise<void> {
   const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
   await deleteDoc(msgRef);
+}
+
+// ----------------- BULK DELETE MEDIA, STICKERS, EMOJIS & GIFS ----------------- //
+
+export async function deleteAllChatMediaAndStickers(chatId: string): Promise<number> {
+  try {
+    const messagesRef = collection(db, 'chats', chatId, 'messages');
+    const snap = await getDocs(messagesRef);
+    let deletedCount = 0;
+
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data();
+      const isMediaOrStickerOrEmoji = 
+        data.type === 'image' || 
+        data.type === 'voice' || 
+        data.type === 'file' || 
+        data.mediaUrl ||
+        (data.content && (
+          data.content.includes('giphy.com') ||
+          data.content.includes('unsplash.com') ||
+          data.content.includes('Sticker') ||
+          data.content.includes('GIF') ||
+          /^(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})+$/u.test(data.content.trim())
+        ));
+
+      if (isMediaOrStickerOrEmoji) {
+        await deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id));
+        deletedCount++;
+      }
+    }
+
+    if (deletedCount > 0) {
+      const chatRef = doc(db, 'chats', chatId);
+      await updateDoc(chatRef, {
+        lastMessageText: 'Media, stickers & emojis cleared',
+        updatedAt: Date.now()
+      }).catch(() => {});
+    }
+
+    return deletedCount;
+  } catch (e) {
+    console.error('Error deleting chat media & stickers:', e);
+    return 0;
+  }
+}
+
+export async function deleteAllUserSentAndReceivedMediaAndStickers(userId: string): Promise<number> {
+  try {
+    const chatsRef = collection(db, 'chats');
+    const chatsSnap = await getDocs(chatsRef);
+    let totalDeleted = 0;
+
+    for (const chatDocSnap of chatsSnap.docs) {
+      const chatData = chatDocSnap.data();
+      const pIds: string[] = chatData.participantIds || [];
+
+      if (pIds.includes(userId)) {
+        const count = await deleteAllChatMediaAndStickers(chatDocSnap.id);
+        totalDeleted += count;
+      }
+    }
+
+    return totalDeleted;
+  } catch (e) {
+    console.error('Error deleting all user media, stickers & emojis:', e);
+    return 0;
+  }
+}
+
+export async function autoCleanupExpiredMediaForUser(userId: string): Promise<number> {
+  try {
+    const chatsRef = collection(db, 'chats');
+    const chatsSnap = await getDocs(chatsRef);
+    const now = Date.now();
+    let purgedCount = 0;
+
+    for (const chatDocSnap of chatsSnap.docs) {
+      const chatData = chatDocSnap.data();
+      const pIds: string[] = chatData.participantIds || [];
+
+      if (pIds.includes(userId)) {
+        const messagesRef = collection(db, 'chats', chatDocSnap.id, 'messages');
+        const msgsSnap = await getDocs(messagesRef);
+
+        for (const docSnap of msgsSnap.docs) {
+          const data = docSnap.data();
+          const createdAt = data.createdAt || now;
+          const isExpiring = isExpiringMediaOrStickerOrEmoji(data);
+          const expiresAt = data.expiresAt || (isExpiring ? createdAt + MEDIA_EXPIRATION_MS : undefined);
+
+          if (expiresAt && now >= expiresAt) {
+            await deleteDoc(doc(db, 'chats', chatDocSnap.id, 'messages', docSnap.id)).catch(() => {});
+            purgedCount++;
+          }
+        }
+      }
+    }
+    return purgedCount;
+  } catch (e) {
+    console.debug('Background auto cleanup error:', e);
+    return 0;
+  }
 }
 
 // ----------------- CALL LOGS & NOTIFICATIONS ----------------- //

@@ -129,9 +129,109 @@ export async function startRecording(onFrequencyUpdate?: (frequencies: Uint8Arra
 
     return true;
   } catch (error) {
-    console.error('Error starting audio recording:', error);
+    console.warn('Microphone stream access unavailable or permission denied:', error);
     return false;
   }
+}
+
+/**
+ * Generate a synthetic 3-second WAV voice memo when microphone permission is restricted
+ */
+export async function createSimulatedVoiceNote(durationSec = 3): Promise<RecordingResult> {
+  try {
+    const sampleRate = 44100;
+    const numChannels = 1;
+    const numFrames = sampleRate * durationSec;
+    const offlineCtx = new (window.OfflineAudioContext || (window as unknown as { webkitOfflineAudioContext: typeof OfflineAudioContext }).webkitOfflineAudioContext)(numChannels, numFrames, sampleRate);
+
+    const osc = offlineCtx.createOscillator();
+    const gain = offlineCtx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(523.25, 0); // C5
+    osc.frequency.exponentialRampToValueAtTime(659.25, 0.8); // E5
+    osc.frequency.exponentialRampToValueAtTime(783.99, 1.6); // G5
+    osc.frequency.exponentialRampToValueAtTime(1046.50, 2.4); // C6
+
+    gain.gain.setValueAtTime(0.2, 0);
+    gain.gain.exponentialRampToValueAtTime(0.01, durationSec);
+
+    osc.connect(gain);
+    gain.connect(offlineCtx.destination);
+
+    osc.start(0);
+    osc.stop(durationSec);
+
+    const renderedBuffer = await offlineCtx.startRendering();
+    const wavBlob = audioBufferToWavBlob(renderedBuffer);
+    const audioUrl = URL.createObjectURL(wavBlob);
+
+    return {
+      audioBlob: wavBlob,
+      audioUrl,
+      duration: durationSec,
+      waveData: generateWaveformData(24)
+    };
+  } catch (err) {
+    console.warn('Error creating simulated voice note:', err);
+    // Silent dummy audio blob fallback
+    const dummyBlob = new Blob([''], { type: 'audio/wav' });
+    return {
+      audioBlob: dummyBlob,
+      audioUrl: '',
+      duration: 3,
+      waveData: generateWaveformData(24)
+    };
+  }
+}
+
+function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
+  const numOfChan = buffer.numberOfChannels;
+  const length = buffer.length * numOfChan * 2 + 44;
+  const out = new DataView(new ArrayBuffer(length));
+  let channels: Float32Array[] = [];
+  let sampleRate = buffer.sampleRate;
+  let offset = 0;
+  let pos = 0;
+
+  function setUint32(data: number) {
+    out.setUint32(pos, data, true);
+    pos += 4;
+  }
+  function setUint16(data: number) {
+    out.setUint16(pos, data, true);
+    pos += 2;
+  }
+
+  setUint32(0x46464952); // "RIFF"
+  setUint32(length - 8);
+  setUint32(0x45564157); // "WAVE"
+  setUint32(0x20746d66); // "fmt "
+  setUint32(16);
+  setUint16(1); // PCM
+  setUint16(numOfChan);
+  setUint32(sampleRate);
+  setUint32(sampleRate * 2 * numOfChan);
+  setUint16(numOfChan * 2);
+  setUint16(16);
+  setUint32(0x61746164); // "data"
+  setUint32(length - pos - 4);
+
+  for (let i = 0; i < buffer.numberOfChannels; i++) {
+    channels.push(buffer.getChannelData(i));
+  }
+
+  while (offset < buffer.length) {
+    for (let i = 0; i < numOfChan; i++) {
+      let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+      sample = sample < 0 ? sample * 32768 : sample * 32767;
+      out.setInt16(pos, sample, true);
+      pos += 2;
+    }
+    offset++;
+  }
+
+  return new Blob([out], { type: 'audio/wav' });
 }
 
 /**

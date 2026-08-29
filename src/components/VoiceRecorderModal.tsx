@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { startRecording, stopRecording, cancelRecording, RecordingResult } from '../services/audioService';
+import { startRecording, stopRecording, cancelRecording, createSimulatedVoiceNote, RecordingResult } from '../services/audioService';
 
 interface VoiceRecorderModalProps {
   isOpen: boolean;
@@ -17,30 +17,31 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
   const [freqBars, setFreqBars] = useState<number[]>([10, 20, 15, 30, 25, 40, 50, 30, 20, 10]);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
 
+  const initRecording = () => {
+    setSeconds(0);
+    setMicPermissionError(null);
+    
+    startRecording((frequencies) => {
+      const step = Math.floor(frequencies.length / 16);
+      const bars: number[] = [];
+      for (let i = 0; i < 16; i++) {
+        const val = frequencies[i * step] || 0;
+        bars.push(Math.max(10, Math.min(100, (val / 255) * 100)));
+      }
+      setFreqBars(bars);
+    }).then((success) => {
+      if (success) {
+        setIsRecording(true);
+      } else {
+        setMicPermissionError('Microphone access was denied or is restricted in this window. Please allow microphone permissions in browser settings, or use simulated demo voice memo below.');
+      }
+    });
+  };
+
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (isOpen) {
-      setSeconds(0);
-      setMicPermissionError(null);
-      
-      startRecording((frequencies) => {
-        const step = Math.floor(frequencies.length / 16);
-        const bars: number[] = [];
-        for (let i = 0; i < 16; i++) {
-          const val = frequencies[i * step] || 0;
-          bars.push(Math.max(10, Math.min(100, (val / 255) * 100)));
-        }
-        setFreqBars(bars);
-      }).then((success) => {
-        if (success) {
-          setIsRecording(true);
-          timer = setInterval(() => {
-            setSeconds(s => s + 1);
-          }, 1000);
-        } else {
-          setMicPermissionError('Microphone access is required to record voice notes. Please allow microphone permissions in your browser.');
-        }
-      });
+      initRecording();
     }
 
     return () => {
@@ -49,6 +50,16 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
       setIsRecording(false);
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isRecording) {
+      timer = setInterval(() => {
+        setSeconds(s => s + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isRecording]);
 
   if (!isOpen) return null;
 
@@ -67,6 +78,12 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
     onClose();
   };
 
+  const handleSendSimulated = async () => {
+    const res = await createSimulatedVoiceNote(3);
+    onSendVoice(res);
+    onClose();
+  };
+
   const formatTimer = (sec: number) => {
     const mins = Math.floor(sec / 60);
     const s = sec % 60;
@@ -80,7 +97,7 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xl">🎙️</span>
             <span className="text-sm font-bold text-red-400 uppercase tracking-wider">
-              {isRecording ? 'Recording Voice Note' : 'Microphone Ready'}
+              {isRecording ? 'Recording Voice Note' : micPermissionError ? 'Microphone Restricted' : 'Microphone Ready'}
             </span>
           </div>
           <span className="text-base font-mono font-bold text-white bg-white/5 px-3 py-1 rounded-xl border border-white/10">
@@ -89,9 +106,30 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
         </div>
 
         {micPermissionError ? (
-          <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-xs text-red-200 flex items-start gap-2">
-            <span className="text-base">⚠️</span>
-            <span>{micPermissionError}</span>
+          <div className="space-y-3">
+            <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-xs text-red-200 space-y-2">
+              <div className="flex items-start gap-2">
+                <span className="text-base">⚠️</span>
+                <span className="leading-relaxed">{micPermissionError}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={initRecording}
+                className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/10 transition-all flex items-center justify-center gap-1"
+              >
+                <span>🔄</span>
+                <span>Retry Mic</span>
+              </button>
+              <button
+                onClick={handleSendSimulated}
+                className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 text-white text-xs font-bold shadow-md shadow-red-600/30 transition-all flex items-center justify-center gap-1 active:scale-95"
+              >
+                <span>🎵</span>
+                <span>Send Demo Voice Note</span>
+              </button>
+            </div>
           </div>
         ) : (
           /* Frequency Visualizer Bars */
@@ -115,14 +153,16 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
             <span>Cancel</span>
           </button>
 
-          <button
-            onClick={handleFinishAndSend}
-            disabled={!isRecording || seconds === 0}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold shadow-lg shadow-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
-          >
-            <span>🚀</span>
-            <span>Send Voice Memo</span>
-          </button>
+          {!micPermissionError && (
+            <button
+              onClick={handleFinishAndSend}
+              disabled={!isRecording || seconds === 0}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold shadow-lg shadow-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+            >
+              <span>🚀</span>
+              <span>Send Voice Memo</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
