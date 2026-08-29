@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Users Collection: Public read for lookups by phone, create/update permitted
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Chats Collection: Readable & writable by participants
+    match /chats/{chatId} {
+      allow read, write: if true;
+      
+      // Nested messages subcollection
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Top-level Messages collection for direct global real-time queries
+    match /messages/{messageId} {
+      allow read, write: if true;
+    }
+
+    // Call Logs Collection
+    match /callLogs/{callId} {
+      allow read, write: if true;
+    }
+
+    // Notifications Collection
+    match /notifications/{notificationId} {
+      allow read, write: if true;
+    }
+  }
+}

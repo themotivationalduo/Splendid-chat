@@ -1,0 +1,6 @@
+{
+  "name": "SPLENDID CHAT",
+  "description": "A modern messaging app with Firebase phone & passcode authentication, mirror glass aesthetics, real-time push notifications, voice notes, and media attachments.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
