@@ -1,17 +1,55 @@
 {
-  "short_name": "SplendidChat",
+  "id": "splendid-chat-pwa",
   "name": "SPLENDID CHAT",
+  "short_name": "SplendidChat",
   "description": "A modern messaging app with Firebase phone & passcode authentication, mirror glass aesthetics, real-time push notifications, voice notes, and media attachments.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#121418",
+  "theme_color": "#dc2626",
+  "categories": ["social", "messaging", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icon.svg",
       "type": "image/svg+xml",
-      "sizes": "192x192 512x512"
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "maskable"
     }
   ],
-  "start_url": "/",
-  "background_color": "#121418",
-  "theme_color": "#dc2626",
-  "display": "standalone",
-  "orientation": "portrait"
+  "shortcuts": [
+    {
+      "name": "Direct Messages",
+      "short_name": "Messages",
+      "description": "Open active chat conversations",
+      "url": "/?view=chats",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Profile Settings",
+      "short_name": "Settings",
+      "description": "Customize your account profile and theme",
+      "url": "/?view=settings",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
 }
