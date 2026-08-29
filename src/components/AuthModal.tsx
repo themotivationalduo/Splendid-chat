@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { registerFirebaseUser, loginFirebaseUser } from '../services/firestoreService';
+import { registerFirebaseUser, loginFirebaseUser, checkUsernameAvailable } from '../services/firestoreService';
 import { playGlassChimeSound } from '../services/audioService';
 import { COUNTRIES, Country } from '../lib/countries';
 
@@ -32,10 +32,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [passcode, setPasscode] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👤');
 
+  // Username Availability State
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<{ available: boolean | null; message: string | null }>({
+    available: null,
+    message: null
+  });
+
   // UI State
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Debounced live username availability check
+  useEffect(() => {
+    if (!isRegister || !username.trim()) {
+      setIsCheckingUsername(false);
+      setUsernameStatus({ available: null, message: null });
+      return;
+    }
+
+    const clean = username.trim().toLowerCase().replace(/^@/, '');
+    if (clean.length < 3) {
+      setIsCheckingUsername(false);
+      setUsernameStatus({ available: false, message: 'Username must be at least 3 characters long.' });
+      return;
+    }
+
+    setIsCheckingUsername(true);
+    const timer = setTimeout(async () => {
+      const res = await checkUsernameAvailable(clean);
+      setIsCheckingUsername(false);
+      setUsernameStatus({ available: res.available, message: res.message });
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [username, isRegister]);
 
   if (!isOpen) return null;
 
@@ -66,6 +98,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
       if (!username.trim()) {
         setErrorMessage('Please choose a username');
+        return;
+      }
+      if (usernameStatus.available === false) {
+        setErrorMessage(usernameStatus.message || 'This username is already taken by a registered user. Please choose another.');
         return;
       }
       if (!phoneNumber.trim()) {
@@ -239,10 +275,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
               {/* Username */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <span>🏷️</span>
-                  <span>Username</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <span>🏷️</span>
+                    <span>Username</span>
+                  </label>
+                  {isCheckingUsername && (
+                    <span className="text-[10px] text-amber-400 font-medium animate-pulse flex items-center gap-1">
+                      <span>⏳</span> Checking availability...
+                    </span>
+                  )}
+                  {!isCheckingUsername && usernameStatus.available === true && (
+                    <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                      <span>✓</span> Available
+                    </span>
+                  )}
+                  {!isCheckingUsername && usernameStatus.available === false && (
+                    <span className="text-[10px] text-rose-400 font-bold flex items-center gap-1">
+                      <span>✕</span> Username Taken
+                    </span>
+                  )}
+                </div>
+
                 <div className="relative flex items-center">
                   <span className="absolute left-3.5 text-xs text-slate-400 font-bold">@</span>
                   <input
@@ -250,10 +304,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     value={username}
                     onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                     placeholder="sarah_c"
-                    className="w-full h-11 pl-8 pr-4 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all"
+                    className={`w-full h-11 pl-8 pr-9 rounded-xl mirror-glass-input border text-xs text-white placeholder-slate-500 focus:outline-none transition-all ${
+                      usernameStatus.available === false
+                        ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500 bg-rose-950/20'
+                        : usernameStatus.available === true
+                        ? 'border-emerald-500/80 focus:ring-1 focus:ring-emerald-500 bg-emerald-950/20'
+                        : 'border-white/10 focus:ring-1 focus:ring-red-500'
+                    }`}
                     required
                   />
+                  <div className="absolute right-3 text-xs">
+                    {isCheckingUsername && <span className="animate-spin text-amber-400">⏳</span>}
+                    {!isCheckingUsername && usernameStatus.available === true && <span className="text-emerald-400 font-bold">✓</span>}
+                    {!isCheckingUsername && usernameStatus.available === false && <span className="text-rose-400 font-bold">✕</span>}
+                  </div>
                 </div>
+
+                {usernameStatus.message && (
+                  <p className={`text-[10px] font-semibold pl-1 ${usernameStatus.available ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {usernameStatus.message}
+                  </p>
+                )}
               </div>
 
               {/* Avatar Selector */}

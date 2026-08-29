@@ -39,6 +39,54 @@ export function normalizePhoneNumber(phone: string): string {
 
 // ----------------- USER AUTH & PROFILES (FIRESTORE) ----------------- //
 
+export async function checkUsernameAvailable(
+  username: string,
+  excludeUserId?: string
+): Promise<{ available: boolean; cleanUsername: string; message: string }> {
+  const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
+  if (!cleanUsername) {
+    return { available: false, cleanUsername: '', message: 'Username cannot be empty.' };
+  }
+  if (cleanUsername.length < 3) {
+    return { available: false, cleanUsername, message: 'Username must be at least 3 characters long.' };
+  }
+  if (!/^[a-z0-9_]+$/.test(cleanUsername)) {
+    return { available: false, cleanUsername, message: 'Username can only contain letters, numbers, and underscores.' };
+  }
+
+  try {
+    const usersRef = collection(db, 'users');
+    const userQ = query(usersRef, where('username', '==', cleanUsername));
+    const snap = await getDocs(userQ);
+
+    let isTaken = false;
+    if (!snap.empty) {
+      if (excludeUserId) {
+        isTaken = snap.docs.some((docSnap) => docSnap.id !== excludeUserId);
+      } else {
+        isTaken = true;
+      }
+    }
+
+    if (isTaken) {
+      return {
+        available: false,
+        cleanUsername,
+        message: `Username @${cleanUsername} is already registered to another user.`
+      };
+    }
+
+    return {
+      available: true,
+      cleanUsername,
+      message: `Username @${cleanUsername} is available!`
+    };
+  } catch (err) {
+    console.error('Check username error:', err);
+    return { available: false, cleanUsername, message: 'Unable to check username availability.' };
+  }
+}
+
 export async function registerFirebaseUser(
   fullName: string,
   username: string,
@@ -71,11 +119,10 @@ export async function registerFirebaseUser(
       return { success: false, error: 'An account with this phone number already exists. Please log in.' };
     }
 
-    // Check username taken
-    const userQ = query(usersRef, where('username', '==', cleanUsername));
-    const userSnap = await getDocs(userQ);
-    if (!userSnap.empty) {
-      return { success: false, error: 'Username is already taken. Please choose another.' };
+    // Check username taken against all registered users
+    const usernameStatus = await checkUsernameAvailable(cleanUsername);
+    if (!usernameStatus.available) {
+      return { success: false, error: usernameStatus.message };
     }
 
     const defaultAvatars = ['👤', '🌟', '🚀', '💎', '🔥', '⚡', '👑', '🎯', '🌸', '🦊'];
@@ -168,7 +215,12 @@ export async function updateUserProfile(userId: string, updates: Partial<User>):
       updatedAt: Date.now()
     };
     if (updates.username) {
-      updatePayload.username = updates.username.toLowerCase().replace(/^@/, '');
+      const cleanU = updates.username.toLowerCase().replace(/^@/, '');
+      const checkRes = await checkUsernameAvailable(cleanU, userId);
+      if (!checkRes.available) {
+        throw new Error(checkRes.message);
+      }
+      updatePayload.username = cleanU;
     }
     await updateDoc(userRef, updatePayload);
 

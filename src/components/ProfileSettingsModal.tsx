@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User as UserType, WALLPAPER_OPTIONS } from '../types';
+import { checkUsernameAvailable } from '../services/firestoreService';
 
 interface ProfileSettingsModalProps {
   isOpen: boolean;
@@ -37,22 +38,67 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar || '👤');
   const [selectedWallpaper, setSelectedWallpaper] = useState(currentUser.wallpaper || 'midnight');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<{ available: boolean | null; message: string | null }>({
+    available: true,
+    message: null
+  });
+
+  useEffect(() => {
+    const clean = username.trim().toLowerCase().replace(/^@/, '');
+    if (!clean || clean === currentUser.username.toLowerCase()) {
+      setIsCheckingUsername(false);
+      setUsernameStatus({ available: true, message: null });
+      return;
+    }
+
+    if (clean.length < 3) {
+      setIsCheckingUsername(false);
+      setUsernameStatus({ available: false, message: 'Username must be at least 3 characters long.' });
+      return;
+    }
+
+    setIsCheckingUsername(true);
+    const timer = setTimeout(async () => {
+      const res = await checkUsernameAvailable(clean, currentUser.id);
+      setIsCheckingUsername(false);
+      setUsernameStatus({ available: res.available, message: res.message });
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [username, currentUser.id, currentUser.username]);
 
   if (!isOpen) return null;
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateUser({
-      fullName: fullName.trim() || currentUser.fullName,
-      username: username.trim().toLowerCase().replace(/^@/, '') || currentUser.username,
-      phoneNumber: phoneNumber.trim() || currentUser.phoneNumber,
-      passcode: passcode.length === 6 ? passcode : currentUser.passcode,
-      bio: bio.trim(),
-      avatar: selectedAvatar,
-      wallpaper: selectedWallpaper
-    });
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+    setErrorMessage(null);
+
+    const cleanU = username.trim().toLowerCase().replace(/^@/, '');
+    if (cleanU !== currentUser.username.toLowerCase()) {
+      const checkRes = await checkUsernameAvailable(cleanU, currentUser.id);
+      if (!checkRes.available) {
+        setErrorMessage(checkRes.message);
+        return;
+      }
+    }
+
+    try {
+      onUpdateUser({
+        fullName: fullName.trim() || currentUser.fullName,
+        username: cleanU || currentUser.username,
+        phoneNumber: phoneNumber.trim() || currentUser.phoneNumber,
+        passcode: passcode.length === 6 ? passcode : currentUser.passcode,
+        bio: bio.trim(),
+        avatar: selectedAvatar,
+        wallpaper: selectedWallpaper
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to update profile.');
+    }
   };
 
   return (
@@ -79,6 +125,14 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             ❌
           </button>
         </div>
+
+        {/* Error / Success Toast */}
+        {errorMessage && (
+          <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-xs text-rose-200 flex items-center gap-2 animate-in fade-in">
+            <span className="text-base">⚠️</span>
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
         {/* Profile Edit Form */}
         <form onSubmit={handleSave} className="space-y-3.5">
@@ -125,20 +179,60 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <span>🏷️</span>
-              <span>Username (@username)</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <span>🏷️</span>
+                <span>Username (@username)</span>
+              </label>
+              {isCheckingUsername && (
+                <span className="text-[10px] text-amber-400 font-medium animate-pulse flex items-center gap-1">
+                  <span>⏳</span> Checking...
+                </span>
+              )}
+              {!isCheckingUsername && usernameStatus.available === true && username.toLowerCase() !== currentUser.username.toLowerCase() && (
+                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                  <span>✓</span> Available
+                </span>
+              )}
+              {!isCheckingUsername && usernameStatus.available === false && (
+                <span className="text-[10px] text-rose-400 font-bold flex items-center gap-1">
+                  <span>✕</span> Already Taken
+                </span>
+              )}
+            </div>
             <div className="relative">
               <span className="absolute left-3.5 top-3 text-xs text-slate-400">@</span>
               <input
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                className="w-full h-11 pl-7 pr-3.5 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+                onChange={(e) => {
+                  setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+                  setErrorMessage(null);
+                }}
+                className={`w-full h-11 pl-7 pr-8 rounded-xl mirror-glass-input border text-xs text-white placeholder-slate-400 focus:outline-none transition-all ${
+                  usernameStatus.available === false
+                    ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500 bg-rose-950/20'
+                    : usernameStatus.available === true && username.toLowerCase() !== currentUser.username.toLowerCase()
+                    ? 'border-emerald-500/80 focus:ring-1 focus:ring-emerald-500 bg-emerald-950/20'
+                    : 'border-white/10 focus:ring-1 focus:ring-red-500'
+                }`}
                 required
               />
+              <div className="absolute right-3 top-3.5 text-xs">
+                {isCheckingUsername && <span className="animate-spin text-amber-400">⏳</span>}
+                {!isCheckingUsername && usernameStatus.available === true && username.toLowerCase() !== currentUser.username.toLowerCase() && (
+                  <span className="text-emerald-400 font-bold">✓</span>
+                )}
+                {!isCheckingUsername && usernameStatus.available === false && (
+                  <span className="text-rose-400 font-bold">✕</span>
+                )}
+              </div>
             </div>
+            {usernameStatus.message && username.toLowerCase() !== currentUser.username.toLowerCase() && (
+              <p className={`text-[10px] font-semibold pl-1 ${usernameStatus.available ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {usernameStatus.message}
+              </p>
+            )}
             <p className="text-[10px] text-slate-400 pl-1">
               Updating your username will automatically update your profile across all chats with other users in real-time.
             </p>
