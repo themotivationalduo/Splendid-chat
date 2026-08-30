@@ -117,6 +117,16 @@ export default function App() {
   const [activeCall, setActiveCall] = useState<{ chat: Chat; isVideo: boolean } | null>(null);
   const [inAppToast, setInAppToast] = useState<PushNotification | null>(null);
 
+  // 600ms Splash Screen state
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    const splashTimer = setTimeout(() => {
+      setShowSplash(false);
+    }, 600);
+    return () => clearTimeout(splashTimer);
+  }, []);
+
   // Web Share Target & Native App Integration States
   const [sharedContent, setSharedContent] = useState<string | null>(null);
   const [showSharedToast, setShowSharedToast] = useState(false);
@@ -638,6 +648,31 @@ export default function App() {
 
   return (
     <div className={`min-h-screen animated-gradient-bg ${theme === 'light' ? 'light-theme text-black' : 'dark-theme text-slate-100'} font-['Plus_Jakarta_Sans',sans-serif] flex flex-col relative overflow-x-hidden selection:bg-red-500/30 selection:text-red-200`}>
+      {/* 300ms Rotating Splash Screen Overlay */}
+      {showSplash && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0a0c10] select-none pointer-events-auto transition-opacity duration-300">
+          <div className="flex flex-col items-center justify-center space-y-6">
+            {/* Elegant rotating mirror glass app icon container */}
+            <div className="w-24 h-24 rounded-3xl mirror-glass border border-red-500/30 flex items-center justify-center shadow-[0_0_50px_rgba(239,68,68,0.15)] animate-spin">
+              <img 
+                src="/icon-192.png" 
+                alt="Splendid Chat Logo" 
+                className="w-16 h-16 rounded-2xl pointer-events-none"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="flex flex-col items-center space-y-1 text-center">
+              <h1 className="text-lg font-black tracking-widest bg-gradient-to-r from-red-500 via-rose-500 to-red-600 bg-clip-text text-transparent">
+                SPLENDID CHAT
+              </h1>
+              <span className="text-[9px] font-extrabold uppercase tracking-widest text-red-500/60 font-mono">
+                Splendid Experience
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Real-Time Push Notification Glass Toast */}
       {inAppToast && (
         <div
@@ -726,8 +761,8 @@ export default function App() {
       {/* Main Content Area based on Active Tab - hidden when in ChatRoom */}
       {!selectedChat && (
         <main className="flex-1 flex flex-col w-full max-w-xl mx-auto pt-16 pb-20 px-1 sm:px-3 min-w-0">
-        {activeTab === 'chats' && (
-          <>
+          {/* Chats Tab */}
+          <div className={activeTab === 'chats' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
             {/* Contacts & Conversations Search Bar */}
             <SearchBar
               query={searchQuery}
@@ -837,153 +872,152 @@ export default function App() {
               <span className="text-base group-hover:scale-110 transition-transform">💬➕</span>
               <span className="tracking-wide">New Chat</span>
             </button>
-          </>
-        )}
+          </div>
 
-        {/* Contacts Tab */}
-        {activeTab === 'users' && (
-          <div className="w-full px-4 py-4 space-y-4 pb-28 animate-in fade-in duration-75">
-            {/* Search contacts inside contacts tab */}
-            <SearchBar
-              query={searchQuery}
-              onQueryChange={setSearchQuery}
-              onClear={() => setSearchQuery('')}
-              placeholder="Search contacts by @username, phone, or name..."
-            />
+          {/* Contacts Tab */}
+          <div className={activeTab === 'users' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
+            <div className="w-full px-4 py-4 space-y-4 pb-28">
+              {/* Search contacts inside contacts tab */}
+              <SearchBar
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+                onClear={() => setSearchQuery('')}
+                placeholder="Search contacts by @username, phone, or name..."
+              />
 
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Registered Contacts ({allUsers.length})
-              </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsStartNewChatOpen(true)}
-                  className="px-3 py-1.5 rounded-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-md shadow-red-600/30 transition-all flex items-center gap-1.5"
-                >
-                  <span>🔍</span>
-                  <span>Find Contact</span>
-                </button>
-                <button
-                  onClick={() => setIsUserManagementOpen(true)}
-                  className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs transition-all flex items-center gap-1"
-                >
-                  <span>➕</span>
-                  <span>Add</span>
-                </button>
-              </div>
-            </div>
-
-            {allUsers.length === 0 ? (
-              <div className="p-8 rounded-3xl mirror-glass-card border border-white/10 text-center space-y-3">
-                <div className="text-3xl">👥</div>
-                <h4 className="text-sm font-bold text-slate-100">No contacts yet</h4>
-                <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                  Add contacts with their @username and phone number to start instant chat conversations and voice calls in real-time.
-                </p>
-                <div className="flex items-center justify-center gap-2 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Registered Contacts ({allUsers.length})
+                </h3>
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsStartNewChatOpen(true)}
-                    className="px-4 py-2 rounded-full bg-gradient-to-r from-red-600 to-rose-600 text-white text-xs font-bold shadow-md shadow-red-600/30"
+                    className="px-3 py-1.5 rounded-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-md shadow-red-600/30 transition-all flex items-center gap-1.5"
                   >
-                    💬 Find Contact
+                    <span>🔍</span>
+                    <span>Find Contact</span>
                   </button>
                   <button
                     onClick={() => setIsUserManagementOpen(true)}
-                    className="px-4 py-2 rounded-full bg-white/10 text-slate-200 text-xs font-bold border border-white/10"
+                    className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs transition-all flex items-center gap-1"
                   >
-                    ➕ Add Contact
+                    <span>➕</span>
+                    <span>Add</span>
                   </button>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {allUsers
-                  .filter(u => {
-                    if (!searchQuery.trim()) return true;
-                    const q = searchQuery.toLowerCase().replace(/^@/, '');
-                    return (
-                      (u.username && u.username.toLowerCase().includes(q)) ||
-                      (u.fullName && u.fullName.toLowerCase().includes(q)) ||
-                      (u.phoneNumber && u.phoneNumber.includes(q))
-                    );
-                  })
-                  .map((user) => {
-                    const isSelf = currentUser ? user.id === currentUser.id : false;
-                    const displayUsername = `@${(user.username || user.fullName).replace(/^@/, '')}`;
 
-                    return (
-                      <div
-                        key={user.id}
-                        onClick={() => handleOpenUserProfile(user)}
-                        className={`p-3 rounded-2xl mirror-glass-card border flex items-center justify-between gap-3 cursor-pointer transition-all select-none ${
-                          isSelf ? 'border-red-500/30 bg-red-950/20' : 'border-white/10 hover:border-white/20'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="relative w-11 h-11 rounded-2xl mirror-glass-input border border-white/10 flex items-center justify-center font-bold text-lg text-white shrink-0 shadow-sm">
-                            {user.avatar || '👤'}
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121418] ${
-                                user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
-                              }`}
-                            />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <h4 className="text-sm font-bold text-slate-100 truncate">
-                                {displayUsername}
-                              </h4>
-                              {isSelf && (
-                                <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[9px] font-bold">
-                                  You
-                                </span>
-                              )}
+              {allUsers.length === 0 ? (
+                <div className="p-8 rounded-3xl mirror-glass-card border border-white/10 text-center space-y-3">
+                  <div className="text-3xl">👥</div>
+                  <h4 className="text-sm font-bold text-slate-100">No contacts yet</h4>
+                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                    Add contacts with their @username and phone number to start instant chat conversations and voice calls in real-time.
+                  </p>
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    <button
+                      onClick={() => setIsStartNewChatOpen(true)}
+                      className="px-4 py-2 rounded-full bg-gradient-to-r from-red-600 to-rose-600 text-white text-xs font-bold shadow-md shadow-red-600/30"
+                    >
+                      💬 Find Contact
+                    </button>
+                    <button
+                      onClick={() => setIsUserManagementOpen(true)}
+                      className="px-4 py-2 rounded-full bg-white/10 text-slate-200 text-xs font-bold border border-white/10"
+                    >
+                      ➕ Add Contact
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {allUsers
+                    .filter(u => {
+                      if (!searchQuery.trim()) return true;
+                      const q = searchQuery.toLowerCase().replace(/^@/, '');
+                      return (
+                        (u.username && u.username.toLowerCase().includes(q)) ||
+                        (u.fullName && u.fullName.toLowerCase().includes(q)) ||
+                        (u.phoneNumber && u.phoneNumber.includes(q))
+                      );
+                    })
+                    .map((user) => {
+                      const isSelf = currentUser ? user.id === currentUser.id : false;
+                      const displayUsername = `@${(user.username || user.fullName).replace(/^@/, '')}`;
+
+                      return (
+                        <div
+                          key={user.id}
+                          onClick={() => handleOpenUserProfile(user)}
+                          className={`p-3 rounded-2xl mirror-glass-card border flex items-center justify-between gap-3 cursor-pointer transition-all select-none ${
+                            isSelf ? 'border-red-500/30 bg-red-950/20' : 'border-white/10 hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="relative w-11 h-11 rounded-2xl mirror-glass-input border border-white/10 flex items-center justify-center font-bold text-lg text-white shrink-0 shadow-sm">
+                              {user.avatar || '👤'}
+                              <span
+                                className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121418] ${
+                                  user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
+                                }`}
+                              />
                             </div>
-                            <p className="text-xs text-slate-400 font-mono truncate">
-                              {user.fullName} • 📱 {user.phoneNumber}
-                            </p>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <h4 className="text-sm font-bold text-slate-100 truncate">
+                                  {displayUsername}
+                                </h4>
+                                {isSelf && (
+                                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[9px] font-bold">
+                                    You
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-400 font-mono truncate">
+                                {user.fullName} • 📱 {user.phoneNumber}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleOpenUserProfile(user)}
+                              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center text-sm"
+                              title="View Contact Info"
+                            >
+                              ℹ️
+                            </button>
+                            {!isSelf && (
+                              <button
+                                onClick={() => handleStartChatWithUser(user)}
+                                className="px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-xs font-bold transition-all flex items-center gap-1"
+                              >
+                                <span>💬</span>
+                                <span>Chat</span>
+                              </button>
+                            )}
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => handleOpenUserProfile(user)}
-                            className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center text-sm"
-                            title="View Contact Info"
-                          >
-                            ℹ️
-                          </button>
-                          {!isSelf && (
-                            <button
-                              onClick={() => handleStartChatWithUser(user)}
-                              className="px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-xs font-bold transition-all flex items-center gap-1"
-                            >
-                              <span>💬</span>
-                              <span>Chat</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
+                      );
+                    })}
+                </div>
+              )}
+            </div>
           </div>
-        )}
 
-        {/* Calls Tab */}
-        {activeTab === 'calls' && (
-          <CallsTabView
-            chats={chats}
-            callLogs={callLogs}
-            onStartCall={handleStartCall}
-            onOpenContacts={() => setIsUserManagementOpen(true)}
-          />
-        )}
+          {/* Calls Tab */}
+          <div className={activeTab === 'calls' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
+            <CallsTabView
+              chats={chats}
+              callLogs={callLogs}
+              onStartCall={handleStartCall}
+              onOpenContacts={() => setIsUserManagementOpen(true)}
+            />
+          </div>
 
-        {/* Settings Tab */}
-        {activeTab === 'settings' && (
-          <div className="w-full px-4 py-4 space-y-4 pb-28 animate-in fade-in duration-75">
+          {/* Settings Tab */}
+          <div className={activeTab === 'settings' ? 'block w-full animate-in fade-in duration-75 text-slate-100' : 'hidden'}>
+            <div className="w-full px-4 py-4 space-y-4 pb-28">
             {currentUser ? (
               <div className="p-5 rounded-3xl mirror-glass-card border border-white/10 space-y-4">
                 <div className="flex items-center gap-3.5">
@@ -1117,9 +1151,9 @@ export default function App() {
               </div>
             )}
           </div>
-        )}
+        </div>
       </main>
-      )}
+    )}
 
       {/* Floating Bottom Navigation Bar */}
       {!selectedChat && (

@@ -21,13 +21,13 @@ export const FloatingGlassNavBar: React.FC<FloatingGlassNavBarProps> = ({
       // Hide floating nav bar whenever scrolling occurs (up or down)
       setIsVisible(false);
 
-      // When user stops scrolling, automatically reveal navbar after 250ms
+      // When user stops scrolling, automatically reveal navbar almost instantly (after 120ms)
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
       }
       scrollTimeoutRef.current = setTimeout(() => {
         setIsVisible(true);
-      }, 250);
+      }, 120);
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
@@ -63,7 +63,7 @@ export const FloatingGlassNavBar: React.FC<FloatingGlassNavBarProps> = ({
 
   return (
     <nav
-      className={`fixed bottom-3 inset-x-0 z-40 w-auto max-w-[min(280px,92vw)] mx-auto px-2 transition-all duration-300 ease-out pointer-events-none pb-[env(safe-area-inset-bottom,0px)] ${
+      className={`fixed bottom-3 inset-x-0 z-40 w-auto max-w-[min(280px,92vw)] mx-auto px-2 transition-all duration-100 ease-out pointer-events-none pb-[env(safe-area-inset-bottom,0px)] ${
         isVisible ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'
       }`}
     >
