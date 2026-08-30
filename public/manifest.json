@@ -78,6 +78,15 @@
       "purpose": "maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "/screenshot.jpg",
+      "sizes": "768x1376",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Splendid Chat App Main Screen"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Direct Messages",
