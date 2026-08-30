@@ -334,20 +334,23 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
           };
         }
 
+        const isGroup = data.isGroup || false;
         const peerUsername = peer.username || peer.fullName?.toLowerCase().replace(/[@\s]/g, '') || 'user';
-        const displayChatName = `@${peerUsername.replace(/^@/, '')}`;
+        const displayChatName = isGroup 
+          ? (data.name || 'Group Chat') 
+          : `@${peerUsername.replace(/^@/, '')}`;
 
         chats.push({
           id: docSnap.id,
           name: displayChatName,
           username: peerUsername,
           phoneNumber: peer.phoneNumber,
-          avatar: peer.avatar || data.avatar || '👤',
-          avatarType: peer.avatarType || data.avatarType || 'emoji',
-          status: peer.status || data.status || 'online',
-          lastSeen: peer.lastSeen || data.lastSeen || 'Active now',
+          avatar: data.avatar || peer.avatar || '👤',
+          avatarType: data.avatarType || peer.avatarType || 'emoji',
+          status: isGroup ? 'online' : (peer.status || data.status || 'online'),
+          lastSeen: isGroup ? 'Active now' : (peer.lastSeen || data.lastSeen || 'Active now'),
           draft: userDraft,
-          isGroup: data.isGroup || false,
+          isGroup: isGroup,
           creatorId: data.creatorId || '',
           groupMembers: data.groupMembers || [],
           isPinned: data.pinned || data.isPinned || false,

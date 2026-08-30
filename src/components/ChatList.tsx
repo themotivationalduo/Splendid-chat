@@ -27,6 +27,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [activeMenuChatId, setActiveMenuChatId] = useState<string | null>(null);
 
   const getChatDisplayName = (chat: Chat) => {
+    if (chat.isGroup) return chat.name;
     const rawUsername = chat.username || chat.participant?.username || (chat.name.startsWith('@') ? chat.name.slice(1) : chat.name);
     return `@${rawUsername.replace(/^@/, '')}`;
   };

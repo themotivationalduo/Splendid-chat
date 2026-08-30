@@ -106,7 +106,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               type="text"
               value={groupName}
               onChange={e => setGroupName(e.target.value)}
-              placeholder="e.g. Project Alpha, Weekend Squad"
+              placeholder="e.g. Splendid Group, Project Alpha"
               className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 transition-colors"
               required
             />
