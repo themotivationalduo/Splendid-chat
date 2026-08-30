@@ -11,13 +11,16 @@ interface AudioVoicePlayerProps {
 export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
   audioUrl,
   duration = 17,
-  waveData = [30, 50, 80, 60, 90, 45, 70, 85, 40, 65, 95, 30, 75, 55, 80, 40, 60, 85, 50, 70, 90, 40, 60, 30],
+  waveData = [],
   isUserMessage = false,
   senderAvatar = '👤'
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Use provided waveData or default to a safe fallback if empty
+  const displayWaveData = waveData.length > 0 ? waveData : Array(24).fill(50);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -87,8 +90,8 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
             className="absolute -top-1 w-3 h-3 rounded-full bg-cyan-400 border border-slate-900 z-10 shadow-sm transition-all duration-75"
             style={{ left: `calc(${progressPercent}% - 6px)` }}
           />
-          {waveData.map((barHeight, idx) => {
-            const barProgress = (idx / waveData.length) * 100;
+          {displayWaveData.map((barHeight, idx) => {
+            const barProgress = (idx / displayWaveData.length) * 100;
             const isFilled = barProgress <= progressPercent;
 
             return (

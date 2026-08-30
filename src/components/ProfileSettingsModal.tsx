@@ -38,6 +38,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar || '👤');
   const [selectedWallpaper, setSelectedWallpaper] = useState(currentUser.wallpaper || 'midnight');
   const [allowReshare, setAllowReshare] = useState(currentUser.allowReshare !== false);
+  const [allowPhoneNumberVisibility, setAllowPhoneNumberVisibility] = useState(currentUser.allowPhoneNumberVisibility !== false);
   const [activeAccordion, setActiveAccordion] = useState<string | null>('profile');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -50,7 +51,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   useEffect(() => {
     // Sync with currentUser prop updates
     setAllowReshare(currentUser.allowReshare !== false);
-  }, [currentUser?.allowReshare]);
+    setAllowPhoneNumberVisibility(currentUser.allowPhoneNumberVisibility !== false);
+  }, [currentUser?.allowReshare, currentUser?.allowPhoneNumberVisibility]);
 
   useEffect(() => {
     const clean = username.trim().toLowerCase().replace(/^@/, '');
@@ -100,7 +102,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
         bio: bio.trim(),
         avatar: selectedAvatar,
         wallpaper: selectedWallpaper,
-        allowReshare: allowReshare
+        allowReshare: allowReshare,
+        allowPhoneNumberVisibility: allowPhoneNumberVisibility
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2000);
@@ -325,6 +328,25 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     <span 
                       className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
                       style={{ left: allowReshare ? '24px' : '4px' }}
+                    />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                  <div className="pr-2 text-left">
+                    <h5 className="text-xs font-bold text-slate-200">Show Phone Number</h5>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                      Make your phone number visible to others when they start a chat using your username.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAllowPhoneNumberVisibility(!allowPhoneNumberVisibility)}
+                    className="w-12 h-6 rounded-full transition-all relative cursor-pointer focus:outline-none"
+                    style={{ backgroundColor: allowPhoneNumberVisibility ? '#dc2626' : '#374151' }}
+                  >
+                    <span 
+                      className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                      style={{ left: allowPhoneNumberVisibility ? '24px' : '4px' }}
                     />
                   </button>
                 </div>

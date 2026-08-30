@@ -12,6 +12,7 @@ export interface User {
   role?: string;
   wallpaper?: string;
   allowReshare?: boolean; // toggle in settings, defaults to true
+  allowPhoneNumberVisibility?: boolean; // toggle in settings, defaults to true
   createdAt: number;
 }
 

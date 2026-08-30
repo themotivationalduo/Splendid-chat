@@ -102,10 +102,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <span className="text-base text-cyan-400 shrink-0">📱</span>
               <div className="min-w-0">
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Phone Number</p>
-                <p className="text-xs font-mono font-bold text-slate-100 truncate">{user.phoneNumber || 'Not provided'}</p>
+                <p className="text-xs font-mono font-bold text-slate-100 truncate">
+                  {user.allowPhoneNumberVisibility !== false ? (user.phoneNumber || 'Not provided') : 'Hidden'}
+                </p>
               </div>
             </div>
-            {user.phoneNumber && (
+            {user.phoneNumber && user.allowPhoneNumberVisibility !== false && (
               <button
                 id="copy-phone-btn"
                 onClick={() => handleCopy(user.phoneNumber, 'phone')}

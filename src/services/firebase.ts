@@ -22,6 +22,7 @@ import {
   Firestore
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
@@ -66,6 +67,7 @@ try {
 
 export const db: Firestore = firestoreInstance;
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // Connection test helper per Firebase Skill guidelines
 async function testFirestoreConnection() {

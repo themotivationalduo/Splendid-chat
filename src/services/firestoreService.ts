@@ -804,6 +804,11 @@ export async function toggleMessageReaction(
   await updateDoc(msgRef, { reactions: updatedReactions });
 }
 
+export async function updateFirestoreMessage(chatId: string, messageId: string, newContent: string): Promise<void> {
+  const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
+  await updateDoc(msgRef, { content: newContent });
+}
+
 export async function deleteFirestoreMessage(chatId: string, messageId: string): Promise<void> {
   const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
   await deleteDoc(msgRef);

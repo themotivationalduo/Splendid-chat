@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../services/firebase';
 import { startRecording, stopRecording, cancelRecording, createSimulatedVoiceNote, RecordingResult } from '../services/audioService';
 
 interface VoiceRecorderModalProps {
@@ -73,14 +75,31 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
     const res = await stopRecording();
     setIsRecording(false);
     if (res) {
-      onSendVoice(res);
+      try {
+        const storageRef = ref(storage, `voice_notes/${Date.now()}.webm`);
+        await uploadBytes(storageRef, res.audioBlob);
+        const downloadUrl = await getDownloadURL(storageRef);
+        onSendVoice({ ...res, audioUrl: downloadUrl });
+      } catch (error) {
+        console.error("Error uploading voice note:", error);
+        // Fallback to local URL if upload fails, though it won't work for receiver
+        onSendVoice(res);
+      }
     }
     onClose();
   };
 
   const handleSendSimulated = async () => {
     const res = await createSimulatedVoiceNote(3);
-    onSendVoice(res);
+    try {
+      const storageRef = ref(storage, `voice_notes/${Date.now()}.wav`);
+      await uploadBytes(storageRef, res.audioBlob);
+      const downloadUrl = await getDownloadURL(storageRef);
+      onSendVoice({ ...res, audioUrl: downloadUrl });
+    } catch (error) {
+      console.error("Error uploading simulated voice note:", error);
+      onSendVoice(res);
+    }
     onClose();
   };
 

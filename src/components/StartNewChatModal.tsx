@@ -165,7 +165,9 @@ export const StartNewChatModal: React.FC<StartNewChatModalProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 Contact Account Found
               </span>
-              <span className="text-[11px] text-slate-400 font-mono">{matchedUser.phoneNumber}</span>
+              <span className="text-[11px] text-slate-400 font-mono">
+                {matchedUser.allowPhoneNumberVisibility !== false || searchInput === matchedUser.phoneNumber ? matchedUser.phoneNumber : 'Hidden'}
+              </span>
             </div>
 
             <div className="flex items-center gap-3">
@@ -259,7 +261,7 @@ export const StartNewChatModal: React.FC<StartNewChatModalProps> = ({
                         @{u.username}
                       </h5>
                       <p className="text-[10px] text-slate-400 font-mono truncate">
-                        {u.fullName} • 📱 {u.phoneNumber}
+                        {u.fullName} • 📱 {u.allowPhoneNumberVisibility !== false ? u.phoneNumber : 'Hidden'}
                       </p>
                     </div>
                   </div>

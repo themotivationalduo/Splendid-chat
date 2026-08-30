@@ -98,8 +98,9 @@ export async function startRecording(onFrequencyUpdate?: (frequencies: Uint8Arra
     streamSource.connect(analyser);
 
     // Setup MediaRecorder
+    // Reduce bitrate to 64kbps to reduce size by approx 50%
     const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? { mimeType: 'audio/webm;codecs=opus' }
+      ? { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 64000 }
       : undefined;
 
     mediaRecorder = new MediaRecorder(liveStream, options);
@@ -139,7 +140,7 @@ export async function startRecording(onFrequencyUpdate?: (frequencies: Uint8Arra
  */
 export async function createSimulatedVoiceNote(durationSec = 3): Promise<RecordingResult> {
   try {
-    const sampleRate = 44100;
+    const sampleRate = 22050; // Reduced from 44100
     const numChannels = 1;
     const numFrames = sampleRate * durationSec;
     const offlineCtx = new (window.OfflineAudioContext || (window as unknown as { webkitOfflineAudioContext: typeof OfflineAudioContext }).webkitOfflineAudioContext)(numChannels, numFrames, sampleRate);
