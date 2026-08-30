@@ -19,7 +19,7 @@ let liveStream: MediaStream | null = null;
 /**
  * Play a crystal glass chime notification sound synthesized directly in Web Audio
  */
-export function playGlassChimeSound(type: 'incoming' | 'sent' | 'verified' | 'lock' = 'incoming') {
+export function playGlassChimeSound(type: 'incoming' | 'sent' | 'verified' | 'lock' | 'typing' = 'incoming') {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     const now = ctx.currentTime;
@@ -75,6 +75,18 @@ export function playGlassChimeSound(type: 'incoming' | 'sent' | 'verified' | 'lo
       gain.connect(ctx.destination);
       osc.start(now);
       osc.stop(now + 0.18);
+    } else if (type === 'typing') {
+      // Extremely subtle, short, low-volume click
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1500, now);
+      gain.gain.setValueAtTime(0.03, now); // Very low volume
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03); // Very short
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.03);
     }
   } catch (e) {
     // AudioContext autoplay restrictions or inactive tab

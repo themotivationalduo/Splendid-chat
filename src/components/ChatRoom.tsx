@@ -3,7 +3,16 @@ import { MessageBubble } from './MessageBubble';
 import { Chat, Message, User, WALLPAPER_OPTIONS } from '../types';
 import { AudioVoicePlayer } from './AudioVoicePlayer';
 import { playGlassChimeSound } from '../services/audioService';
-import { saveChatDraft, clearChatDraft, getCachedChatDraft, MEDIA_EXPIRATION_MS, subscribeToUsers, updateFirestoreMessage } from '../services/firestoreService';
+import { 
+  saveChatDraft, 
+  clearChatDraft, 
+  getCachedChatDraft, 
+  MEDIA_EXPIRATION_MS, 
+  subscribeToUsers, 
+  updateFirestoreMessage,
+  clearChatMessages,
+  toggleChatDisappearingMode
+} from '../services/firestoreService';
 import { GroupSettingsModal } from './GroupSettingsModal';
 import { MediaGalleryModal } from './MediaGalleryModal';
 
@@ -106,6 +115,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const typingSoundTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const draftDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Re-sync draft when switching active chat
@@ -131,6 +141,15 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
     draftDebounceRef.current = setTimeout(() => {
       saveChatDraft(chat.id, currentUser.id, val);
     }, 600);
+
+    // Typing sound & haptic (throttled)
+    if (!typingSoundTimeoutRef.current) {
+        if (navigator.vibrate) navigator.vibrate(10);
+        playGlassChimeSound('typing');
+        typingSoundTimeoutRef.current = setTimeout(() => {
+            typingSoundTimeoutRef.current = null;
+        }, 300);
+    }
 
     // Notify typing status
     if (onTyping) {
@@ -281,6 +300,20 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   const [isGroupSettingsOpen, setIsGroupSettingsOpen] = useState(false);
   const [isMediaGalleryOpen, setIsMediaGalleryOpen] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const handleClearChat = async () => {
+    setShowClearConfirm(false);
+    await clearChatMessages(chat.id);
+    clearChatDraft(chat.id, currentUser.id);
+    playGlassChimeSound('sent');
+  };
+
+  const handleToggleDisappearing = async () => {
+    const next = !chat.disappearingMode;
+    await toggleChatDisappearingMode(chat.id, next);
+    playGlassChimeSound('sent');
+  };
 
   const [allUsersState, setAllUsersState] = useState<User[]>([]);
 
@@ -484,7 +517,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           <div className="flex items-center">
             <button
               id="start-voice-call-btn"
-              onClick={() => onStartCall(chat, false)}
+              onClick={() => alert('Voice Call feature is currently under maintenance.')}
               className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base flex items-center gap-0.5"
               title="Start Voice Call"
             >
@@ -496,11 +529,38 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           {/* Video Call */}
           <button
             id="start-video-call-btn"
-            onClick={() => onStartCall(chat, true)}
+            onClick={() => alert('Video Call feature is currently under maintenance.')}
             className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base"
             title="Start Video Call"
           >
             <span>📹</span>
+          </button>
+
+          {/* 24h Disappearing Messages Toggle */}
+          <button
+            onClick={handleToggleDisappearing}
+            className={`p-1.5 rounded-full transition-all flex items-center justify-center ${
+              chat.disappearingMode 
+                ? 'bg-purple-600/40 text-purple-200 border border-purple-500/50 scale-110 shadow-lg shadow-purple-500/20' 
+                : 'text-slate-200 hover:text-white hover:bg-white/10'
+            }`}
+            title={chat.disappearingMode ? '24h Mode is ON' : 'Enable 24h Disappearing Messages'}
+          >
+            <span className="text-base relative">
+              🕒
+              {chat.disappearingMode && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white/20 animate-pulse" />
+              )}
+            </span>
+          </button>
+
+          {/* Clear Chat Button */}
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base"
+            title="Clear All Messages"
+          >
+            <span>🗑️</span>
           </button>
 
           {/* Options / Media Gallery (3-Dots Menu) */}
@@ -922,7 +982,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
             <button
               type="button"
               id="chat-mic-btn"
-              onClick={() => confirmOrExecuteMediaSend('voice note', onOpenVoiceRecorder)}
+              onClick={() => alert('Voice note feature is currently under maintenance.')}
               className="w-9 h-9 rounded-full bg-[#701a75] hover:bg-[#86198f] text-white flex items-center justify-center text-base shadow-md shadow-purple-950/50 transition-all active:scale-95 shrink-0"
               title="Record Voice Note"
             >
@@ -931,6 +991,37 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           )}
         </form>
       </footer>
+
+      {/* Clear Chat Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-red-500/30 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex flex-col items-center text-center space-y-2">
+              <div className="w-16 h-16 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center text-3xl shadow-inner mb-2">
+                🗑️
+              </div>
+              <h3 className="text-xl font-bold text-white">Clear entire chat?</h3>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                This will permanently delete all sent and received messages, images, and voice notes from this chat and Firebase storage.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-white font-bold text-sm transition-all border border-white/10 active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearChat}
+                className="py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-sm shadow-lg shadow-red-600/30 transition-all active:scale-95"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Disappearing Media & Expressive Content Notice Pop-up Modal */}
       {pendingMediaNotice && (

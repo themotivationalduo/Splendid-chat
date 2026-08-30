@@ -10,7 +10,10 @@ import {
   query, 
   where, 
   orderBy, 
-  onSnapshot 
+  onSnapshot,
+  storage,
+  ref,
+  deleteObject
 } from './firebase';
 import { User, Chat, Message, CallLog, PushNotification, CallSession, UserStatus, BroadcastFeed, BroadcastFeedPost, CallSignal } from '../types';
 
@@ -352,6 +355,7 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
           unreadCount: data.unreadCount || 0,
           createdAt: data.createdAt || Date.now(),
           participant: peer,
+          disappearingMode: data.disappearingMode || false,
           lastMessage: {
             text: data.lastMessageText || 'No messages yet',
             timestamp: data.lastMessageTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
@@ -516,7 +520,7 @@ export function subscribeToChatMessages(
     snapshot.forEach(docSnap => {
       const d = docSnap.data();
       const createdAt = d.createdAt || now;
-      const isExpiring = isExpiringMediaOrStickerOrEmoji(d);
+      const isExpiring = d.expiresAt || isExpiringMediaOrStickerOrEmoji(d);
       const expiresAt = d.expiresAt || (isExpiring ? createdAt + MEDIA_EXPIRATION_MS : undefined);
 
       // Check if media/sticker/emoji/GIF has expired -> automatically delete from Firestore & exclude from stream
@@ -566,7 +570,19 @@ export async function sendFirestoreMessage(
   const msgDocRef = doc(messagesRef);
 
   const now = Date.now();
-  const isExpiring = isExpiringMediaOrStickerOrEmoji(message);
+  
+  // Check if chat has disappearing mode enabled
+  let isExpiring = isExpiringMediaOrStickerOrEmoji(message);
+  try {
+    const chatRef = doc(db, 'chats', chatId);
+    const chatSnap = await getDoc(chatRef);
+    if (chatSnap.exists() && chatSnap.data().disappearingMode) {
+      isExpiring = true;
+    }
+  } catch (e) {
+    console.warn('Error checking chat disappearing mode:', e);
+  }
+
   const expiresAt = isExpiring ? now + MEDIA_EXPIRATION_MS : undefined;
 
   const rawPayload: any = {
@@ -810,8 +826,55 @@ export async function updateFirestoreMessage(chatId: string, messageId: string, 
 }
 
 export async function deleteFirestoreMessage(chatId: string, messageId: string): Promise<void> {
-  const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
-  await deleteDoc(msgRef);
+  try {
+    const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
+    const snap = await getDoc(msgRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data.mediaUrl && data.mediaUrl.includes('firebasestorage.googleapis.com')) {
+        try {
+          const fileRef = ref(storage, data.mediaUrl);
+          await deleteObject(fileRef).catch(() => {});
+        } catch (e) {
+          console.debug('Storage delete error (non-critical):', e);
+        }
+      }
+    }
+    await deleteDoc(msgRef);
+  } catch (e) {
+    console.error('Delete message error:', e);
+  }
+}
+
+export async function clearChatMessages(chatId: string): Promise<void> {
+  try {
+    const messagesRef = collection(db, 'chats', chatId, 'messages');
+    const snap = await getDocs(messagesRef);
+    
+    for (const docSnap of snap.docs) {
+      await deleteFirestoreMessage(chatId, docSnap.id);
+    }
+
+    const chatRef = doc(db, 'chats', chatId);
+    await updateDoc(chatRef, {
+      lastMessageText: 'Chat cleared',
+      updatedAt: Date.now()
+    }).catch(() => {});
+  } catch (e) {
+    console.error('Error clearing chat:', e);
+  }
+}
+
+export async function toggleChatDisappearingMode(chatId: string, enabled: boolean): Promise<void> {
+  try {
+    const chatRef = doc(db, 'chats', chatId);
+    await updateDoc(chatRef, {
+      disappearingMode: enabled,
+      updatedAt: Date.now()
+    });
+  } catch (e) {
+    console.error('Error toggling disappearing mode:', e);
+  }
 }
 
 // ----------------- BULK DELETE MEDIA, STICKERS, EMOJIS & GIFS ----------------- //
@@ -838,7 +901,7 @@ export async function deleteAllChatMediaAndStickers(chatId: string): Promise<num
         ));
 
       if (isMediaOrStickerOrEmoji) {
-        await deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id));
+        await deleteFirestoreMessage(chatId, docSnap.id);
         deletedCount++;
       }
     }
@@ -902,10 +965,10 @@ export async function autoCleanupExpiredMediaForUser(userId: string): Promise<nu
           const isExpiring = isExpiringMediaOrStickerOrEmoji(data);
           const expiresAt = data.expiresAt || (isExpiring ? createdAt + MEDIA_EXPIRATION_MS : undefined);
 
-          if (expiresAt && now >= expiresAt) {
-            await deleteDoc(doc(db, 'chats', chatDocSnap.id, 'messages', docSnap.id)).catch(() => {});
-            purgedCount++;
-          }
+      if (expiresAt && now >= expiresAt) {
+        await deleteFirestoreMessage(chatDocSnap.id, docSnap.id).catch(() => {});
+        purgedCount++;
+      }
         }
       }
     }

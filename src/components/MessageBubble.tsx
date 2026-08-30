@@ -78,7 +78,7 @@ export const MessageBubble = React.memo(({
         </div>
       )}
       
-      <div className={`relative max-w-[70%] rounded-xl p-2.5 shadow-sm ${
+      <div className={`relative max-w-[85%] rounded-2xl p-2.5 shadow-sm ${
           isUser
             ? 'bg-[#701a75] text-white rounded-tr-none'
             : 'bg-[#202c33] text-[#e9edef] rounded-tl-none border border-white/5'

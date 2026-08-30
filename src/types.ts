@@ -102,6 +102,7 @@ export interface Chat {
   participant: User;
   tags?: string[];
   createdAt: number;
+  disappearingMode?: boolean; // 24h automatic deletion for all messages
 }
 
 export interface CallLog {

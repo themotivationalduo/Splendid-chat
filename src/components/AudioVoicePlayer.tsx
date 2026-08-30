@@ -74,6 +74,16 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
         />
       )}
 
+      {/* Avatar Badge on left */}
+      <div className="relative shrink-0 mr-1">
+        <div className="w-10 h-10 rounded-full bg-slate-800 border border-white/20 flex items-center justify-center text-lg overflow-hidden shadow">
+          {senderAvatar}
+        </div>
+        <div className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-[9px] font-bold shadow">
+          🎙
+        </div>
+      </div>
+
       {/* Play/Pause Button */}
       <button
         onClick={handleTogglePlay}
@@ -110,16 +120,6 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
         {/* Time duration indicator */}
         <div className="flex items-center justify-between text-[11px] font-medium text-slate-300 opacity-90">
           <span>{isPlaying ? formatTime(currentTime) : formatTime(duration)}</span>
-        </div>
-      </div>
-
-      {/* Avatar Badge on right */}
-      <div className="relative shrink-0 ml-1">
-        <div className="w-10 h-10 rounded-full bg-slate-800 border border-white/20 flex items-center justify-center text-lg overflow-hidden shadow">
-          {senderAvatar}
-        </div>
-        <div className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-[9px] font-bold shadow">
-          🎙
         </div>
       </div>
     </div>

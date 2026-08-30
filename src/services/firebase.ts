@@ -22,7 +22,7 @@ import {
   Firestore
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
+import { getStorage, ref, deleteObject, getDownloadURL, uploadBytes } from 'firebase/storage';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
@@ -94,6 +94,10 @@ export {
   onSnapshot,
   addDoc,
   deleteDoc, arrayUnion, arrayRemove,
-  serverTimestamp
+  serverTimestamp,
+  ref,
+  deleteObject,
+  getDownloadURL,
+  uploadBytes
 };
 
