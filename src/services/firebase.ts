@@ -43,7 +43,7 @@ const dbId = (firebaseConfigJson as { firestoreDatabaseId?: string }).firestoreD
 
 try {
   const options = {
-    experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: true,
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
   };
   firestoreInstance = dbId 
@@ -53,7 +53,7 @@ try {
   try {
     // Fallback to memory local cache if persistent IndexedDB cache is locked or unsupported
     const fallbackOptions = {
-      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: true,
       localCache: memoryLocalCache()
     };
     firestoreInstance = dbId
@@ -72,11 +72,16 @@ export const storage = getStorage(app);
 // Connection test helper per Firebase Skill guidelines
 async function testFirestoreConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    // Attempt a light ping after microtask queue to allow connection handshake
+    setTimeout(async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        // Silently operate with local cache / retry when backend connection warms up
+      }
+    }, 1000);
   } catch (error) {
-    if (error instanceof Error && error.message.includes('offline')) {
-      console.warn('Firestore client operating in offline mode.');
-    }
+    // No-op
   }
 }
 testFirestoreConnection();

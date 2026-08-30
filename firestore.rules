@@ -55,5 +55,10 @@ service cloud.firestore {
     match /broadcast_feed_posts/{postId} {
       allow read, write: if true;
     }
+
+    // Connection test rule
+    match /test/{testId} {
+      allow read, write: if true;
+    }
   }
 }

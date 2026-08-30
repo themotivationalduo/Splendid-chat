@@ -867,6 +867,7 @@ export default function App() {
           unreadNotificationsCount={unreadNotificationsCount}
           onOpenNotifications={() => setIsNotificationsOpen(true)}
           onOpenProfile={() => setIsProfileOpen(true)}
+          onOpenSettings={() => setActiveTab('settings')}
           onLogout={handleLogout}
           onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
           theme={theme}
@@ -1142,6 +1143,51 @@ export default function App() {
                       );
                     })}
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Groups Tab */}
+          <div className={activeTab === 'groups' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
+            <div className="w-full px-3 py-3 space-y-4 pb-28">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                  <span>👥</span>
+                  <span>Group Channels</span>
+                </h3>
+                <button
+                  onClick={() => setIsCreateGroupOpen(true)}
+                  className="px-3.5 py-1.5 rounded-full hero-red-pill text-white font-bold text-xs shadow-md shadow-rose-600/30 flex items-center gap-1.5 active:scale-95 transition-all"
+                >
+                  <span>➕</span>
+                  <span>Create Group</span>
+                </button>
+              </div>
+
+              {chats.filter(c => c.isGroup).length === 0 ? (
+                <div className="p-8 rounded-[24px] bg-[#12141d]/85 border border-white/10 text-center space-y-3 shadow-xl">
+                  <div className="text-3xl">👥</div>
+                  <h4 className="text-sm font-bold text-white">No groups yet</h4>
+                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                    Create a group chat to converse with multiple contacts simultaneously with rich media and real-time syncing.
+                  </p>
+                  <button
+                    onClick={() => setIsCreateGroupOpen(true)}
+                    className="mt-2 px-5 py-2.5 rounded-full hero-red-pill text-white text-xs font-bold shadow-lg shadow-rose-600/30 active:scale-95 transition-all"
+                  >
+                    ➕ Create New Group
+                  </button>
+                </div>
+              ) : (
+                <ChatList
+                  chats={chats.filter(c => c.isGroup)}
+                  selectedChatId={selectedChat?.id || null}
+                  onSelectChat={handleSelectChat}
+                  onDeleteChat={handleDeleteChat}
+                  onTogglePin={handleTogglePin}
+                  onOpenNewChat={() => setIsCreateGroupOpen(true)}
+                  onOpenGroupProfile={handleOpenGroupProfile}
+                />
               )}
             </div>
           </div>

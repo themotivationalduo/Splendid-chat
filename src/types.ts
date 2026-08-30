@@ -75,6 +75,9 @@ export interface Message {
     id: string;
     senderName: string;
     content: string;
+    type?: 'text' | 'image' | 'voice' | 'file';
+    mediaUrl?: string;
+    mediaMeta?: MediaMeta;
   };
 }
 
@@ -141,7 +144,7 @@ export interface PushNotification {
   createdAt?: number;
 }
 
-export type TabType = 'chats' | 'users' | 'updates' | 'calls' | 'settings';
+export type TabType = 'chats' | 'users' | 'groups' | 'updates' | 'calls' | 'settings';
 export type FilterType = 'all' | 'unread' | 'read' | 'pinned' | 'groups';
 
 export interface CallSession {

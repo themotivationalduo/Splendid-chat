@@ -319,7 +319,9 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
           replyTo: {
             id: currentStatus.id,
             senderName: `${currentStatus.userFullName}'s Status`,
-            content: statusSnippet
+            content: statusSnippet,
+            type: currentStatus.type,
+            mediaUrl: currentStatus.type === 'image' ? currentStatus.content : undefined
           }
         },
         currentUser.id

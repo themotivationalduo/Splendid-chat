@@ -14,6 +14,7 @@ interface MessageBubbleProps {
   onToggleReaction: (msgId: string, emoji: string) => void;
   onOpenLightbox: (url: string, content: string) => void;
   onTogglePin: (msg: Message) => void;
+  onScrollToMessage?: (messageId: string) => void;
   editingMessageId: string | null;
   setEditingMessageId: (id: string | null) => void;
   editingMessageText: string;
@@ -41,6 +42,7 @@ export const MessageBubble = React.memo(({
   onToggleReaction,
   onOpenLightbox,
   onTogglePin,
+  onScrollToMessage,
   editingMessageId,
   setEditingMessageId,
   editingMessageText,
@@ -58,6 +60,40 @@ export const MessageBubble = React.memo(({
   handleDragEnd
 }: MessageBubbleProps) => {
   const hasReactions = msg.reactions && Object.keys(msg.reactions).length > 0;
+
+  // Media identification helper for replies
+  const getRepliedMediaDetails = (replyTo?: Message['replyTo']) => {
+    if (!replyTo) return null;
+
+    const type = replyTo.type;
+    const content = replyTo.content || '';
+    const isImage = type === 'image' || !!replyTo.mediaUrl || content.includes('Photo') || content.includes('📷') || content.includes('GIF') || content.includes('Sticker') || content.includes('🏖️') || content.includes('🌆');
+    const isVoice = type === 'voice' || content.includes('Voice') || content.includes('🎤') || content.includes('Voice Note');
+    const isFile = type === 'file' || content.includes('File') || content.includes('📎');
+    const isStatus = content.startsWith('Status:') || replyTo.senderName?.includes('Status') || content.includes('Status');
+    const isGif = content.includes('GIF') || content.includes('🎬');
+    const isSticker = content.includes('Sticker') || content.includes('🎨');
+
+    return {
+      isMedia: isImage || isVoice || isFile || isStatus,
+      isImage,
+      isVoice,
+      isFile,
+      isStatus,
+      isGif,
+      isSticker,
+      mediaUrl: replyTo.mediaUrl
+    };
+  };
+
+  const repliedMedia = getRepliedMediaDetails(msg.replyTo);
+
+  const handleReplyClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (msg.replyTo?.id && onScrollToMessage) {
+      onScrollToMessage(msg.replyTo.id);
+    }
+  };
 
   return (
     <div
@@ -94,13 +130,107 @@ export const MessageBubble = React.memo(({
           </div>
         )}
 
-        {/* Reply preview if present */}
+        {/* Interactive Reply Preview with Media Identification & Scroll-to-Message */}
         {msg.replyTo && (
-          <div className={`mb-2 p-2 rounded-lg text-[11px] border-l-2 ${isUser ? 'bg-black/20 border-white/60 text-white/90' : 'bg-white/5 border-red-500 text-slate-300'}`}>
-            <span className="font-bold block text-[9px] text-red-300">
-              {msg.replyTo.senderName}
-            </span>
-            <span className="truncate block opacity-90">{msg.replyTo.content}</span>
+          <div
+            onClick={handleReplyClick}
+            role="button"
+            tabIndex={0}
+            title="Click to jump to replied message"
+            className={`mb-2 p-2 rounded-xl text-[11px] border-l-4 transition-all duration-150 cursor-pointer select-none group/reply hover:brightness-110 active:scale-[0.98] ${
+              repliedMedia?.isImage
+                ? isUser ? 'bg-black/30 border-cyan-400 text-white/95' : 'bg-cyan-950/30 border-cyan-400 text-slate-200 shadow-sm'
+                : repliedMedia?.isVoice
+                ? isUser ? 'bg-black/30 border-amber-400 text-white/95' : 'bg-amber-950/30 border-amber-400 text-slate-200 shadow-sm'
+                : repliedMedia?.isStatus
+                ? isUser ? 'bg-black/30 border-emerald-400 text-white/95' : 'bg-emerald-950/30 border-emerald-400 text-slate-200 shadow-sm'
+                : isUser ? 'bg-black/25 border-white/70 text-white/90' : 'bg-white/5 border-red-500 text-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                {/* Header: Sender & Action hint */}
+                <div className="flex items-center justify-between gap-1.5 mb-1">
+                  <span className={`font-bold text-[10px] truncate ${
+                    repliedMedia?.isImage
+                      ? 'text-cyan-300'
+                      : repliedMedia?.isVoice
+                      ? 'text-amber-300'
+                      : repliedMedia?.isStatus
+                      ? 'text-emerald-300'
+                      : 'text-red-300'
+                  }`}>
+                    {msg.replyTo.senderName}
+                  </span>
+
+                  <span className="text-[9px] opacity-70 group-hover/reply:opacity-100 group-hover/reply:translate-x-0.5 transition-all text-slate-300 flex items-center gap-0.5 shrink-0">
+                    <span>Jump</span>
+                    <span>⤴</span>
+                  </span>
+                </div>
+
+                {/* Body Content with Media Badges */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Media Type Identifiers */}
+                  {repliedMedia?.isImage && (
+                    <span className="px-1.5 py-0.2 rounded-md bg-cyan-500/25 text-cyan-200 border border-cyan-400/40 text-[9px] font-bold inline-flex items-center gap-1 shrink-0">
+                      {repliedMedia.isGif ? '🎬 GIF' : repliedMedia.isSticker ? '🎨 Sticker' : '📷 Photo'}
+                    </span>
+                  )}
+
+                  {repliedMedia?.isVoice && (
+                    <span className="px-1.5 py-0.2 rounded-md bg-amber-500/25 text-amber-200 border border-amber-400/40 text-[9px] font-bold inline-flex items-center gap-1 shrink-0">
+                      <span>🎤 Voice Note</span>
+                      <span className="font-mono opacity-80">ılılı</span>
+                    </span>
+                  )}
+
+                  {repliedMedia?.isStatus && !repliedMedia.isImage && !repliedMedia.isVoice && (
+                    <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 text-[9px] font-bold inline-flex items-center gap-1 shrink-0">
+                      ✨ Status Story
+                    </span>
+                  )}
+
+                  {repliedMedia?.isFile && (
+                    <span className="px-1.5 py-0.2 rounded-md bg-blue-500/25 text-blue-200 border border-blue-400/40 text-[9px] font-bold inline-flex items-center gap-1 shrink-0">
+                      📎 File Attachment
+                    </span>
+                  )}
+
+                  {/* Content text */}
+                  <span className="truncate text-xs opacity-90 leading-tight">
+                    {msg.replyTo.content && msg.replyTo.content !== 'Photo Attachment' && !msg.replyTo.content.startsWith('Status: 📷')
+                      ? msg.replyTo.content
+                      : (repliedMedia?.isImage ? 'Photo attachment' : repliedMedia?.isVoice ? 'Voice memo' : msg.replyTo.content)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Replied Image Thumbnail if available */}
+              {repliedMedia?.isImage && (
+                <div className="shrink-0">
+                  {repliedMedia.mediaUrl ? (
+                    <img
+                      src={repliedMedia.mediaUrl}
+                      alt="Replied media thumbnail"
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 object-cover rounded-lg border border-white/20 shadow-inner group-hover/reply:scale-105 transition-transform"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-lg bg-cyan-900/40 border border-cyan-400/30 flex items-center justify-center text-base">
+                      📷
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Replied Voice Note icon if available */}
+              {repliedMedia?.isVoice && !repliedMedia.isImage && (
+                <div className="w-9 h-9 rounded-lg bg-amber-900/40 border border-amber-400/30 flex items-center justify-center text-sm text-amber-300 shrink-0">
+                  🎙️
+                </div>
+              )}
+            </div>
           </div>
         )}
 

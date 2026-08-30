@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { Chat, Message, User, WALLPAPER_OPTIONS } from '../types';
 import { AudioVoicePlayer } from './AudioVoicePlayer';
@@ -86,6 +86,16 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageText, setEditingMessageText] = useState('');
+  const [toastNotice, setToastNotice] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToastNotice(msg);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastNotice(null);
+    }, 2800);
+  }, []);
 
   const handleSaveEdit = async (msg: Message) => {
     if (editingMessageText.trim() && editingMessageText !== msg.content) {
@@ -129,6 +139,20 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const handleScrollToMessage = useCallback((messageId: string) => {
+    const targetElement = document.getElementById(`message-${messageId}`);
+    if (targetElement) {
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetElement.classList.add('reply-highlight-target');
+      setTimeout(() => {
+        targetElement.classList.remove('reply-highlight-target');
+      }, 1800);
+      playGlassChimeSound('incoming');
+    } else {
+      showToast('ℹ️ Original message is from a previous session or status story');
+    }
+  }, [showToast]);
 
   useEffect(() => {
     scrollToBottom();
@@ -178,7 +202,10 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
     const replyPayload = replyingTo ? {
       id: replyingTo.id,
       content: replyingTo.content,
-      senderName: replyingTo.senderName
+      senderName: replyingTo.senderName,
+      type: replyingTo.type,
+      mediaUrl: replyingTo.mediaUrl,
+      mediaMeta: replyingTo.mediaMeta
     } : undefined;
 
     setInputText('');
@@ -199,7 +226,10 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           const replyPayload = replyingTo ? {
             id: replyingTo.id,
             content: replyingTo.content,
-            senderName: replyingTo.senderName
+            senderName: replyingTo.senderName,
+            type: replyingTo.type,
+            mediaUrl: replyingTo.mediaUrl,
+            mediaMeta: replyingTo.mediaMeta
           } : undefined;
           setReplyingTo(null);
           onSendMessage('Photo Attachment', 'image', dataUrl, {
@@ -219,7 +249,10 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
       const replyPayload = replyingTo ? {
         id: replyingTo.id,
         content: replyingTo.content,
-        senderName: replyingTo.senderName
+        senderName: replyingTo.senderName,
+        type: replyingTo.type,
+        mediaUrl: replyingTo.mediaUrl,
+        mediaMeta: replyingTo.mediaMeta
       } : undefined;
       setReplyingTo(null);
       onSendMessage(title, 'image', url, {
@@ -251,7 +284,10 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                 const replyPayload = replyingTo ? {
                   id: replyingTo.id,
                   content: replyingTo.content,
-                  senderName: replyingTo.senderName
+                  senderName: replyingTo.senderName,
+                  type: replyingTo.type,
+                  mediaUrl: replyingTo.mediaUrl,
+                  mediaMeta: replyingTo.mediaMeta
                 } : undefined;
                 setReplyingTo(null);
 
@@ -285,7 +321,10 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           const replyPayload = replyingTo ? {
             id: replyingTo.id,
             content: replyingTo.content,
-            senderName: replyingTo.senderName
+            senderName: replyingTo.senderName,
+            type: replyingTo.type,
+            mediaUrl: replyingTo.mediaUrl,
+            mediaMeta: replyingTo.mediaMeta
           } : undefined;
           setReplyingTo(null);
           onSendMessage('Keyboard GIF / Sticker', 'image', pastedText.trim(), {
@@ -671,6 +710,13 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
         </div>
       )}
 
+      {/* Toast Notice */}
+      {toastNotice && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl mirror-glass border border-white/20 shadow-2xl text-xs font-semibold text-white animate-in fade-in slide-in-from-top-2 duration-150 backdrop-blur-xl flex items-center gap-2">
+          <span>{toastNotice}</span>
+        </div>
+      )}
+
       {/* Messages Stream Container */}
       <div
         className="flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar pt-20 pb-36 overscroll-contain backdrop-blur-[2px] bg-black/5"
@@ -704,6 +750,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                 onToggleReaction={onToggleReaction}
                 onOpenLightbox={onOpenLightbox}
                 onTogglePin={onTogglePin}
+                onScrollToMessage={handleScrollToMessage}
                 editingMessageId={editingMessageId}
                 setEditingMessageId={setEditingMessageId}
                 editingMessageText={editingMessageText}
@@ -752,18 +799,79 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           isBarsVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : 'translate-y-24 opacity-0 pointer-events-none'
         }`}
       >
-        {/* Reply Context Banner - Attached on top of input bar */}
+        {/* Reply Context Banner - Attached on top of input bar with Media Identification */}
         {replyingTo && (
           <div className="mb-2 p-2.5 px-3 rounded-2xl bg-[#111b21]/95 border border-white/20 shadow-2xl backdrop-blur-2xl flex items-center justify-between text-xs animate-in slide-in-from-bottom duration-150 z-50">
-            <div className="flex items-center gap-2.5 text-slate-200 min-w-0 pr-2">
-              <div className="w-7 h-7 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center text-sm shrink-0">
+            <div
+              onClick={() => handleScrollToMessage(replyingTo.id)}
+              role="button"
+              tabIndex={0}
+              title="Click to jump to original message"
+              className="flex items-center gap-2.5 text-slate-200 min-w-0 pr-2 cursor-pointer group/replybar flex-1 select-none"
+            >
+              <div className="w-7 h-7 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center text-sm shrink-0 group-hover/replybar:scale-105 transition-transform">
                 ↩️
               </div>
-              <div className="flex flex-col min-w-0">
-                <span className="font-bold text-red-400 text-[11px] truncate">Replying to {replyingTo.senderName}</span>
-                <span className="truncate text-slate-300 text-xs">{replyingTo.content || (replyingTo.type === 'image' ? '📷 Photo' : '🎤 Voice note')}</span>
+              
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-red-400 text-[11px] truncate">Replying to {replyingTo.senderName}</span>
+                  <span className="text-[9px] opacity-60 group-hover/replybar:opacity-100 text-slate-300 flex items-center gap-0.5">
+                    <span>Jump</span>
+                    <span>⤴</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {/* Media identification badges in reply composer bar */}
+                  {replyingTo.type === 'image' && (
+                    <span className="px-1.5 py-0.2 rounded bg-cyan-500/30 text-cyan-200 text-[9px] font-bold border border-cyan-400/40 shrink-0">
+                      📷 Photo
+                    </span>
+                  )}
+                  {replyingTo.type === 'voice' && (
+                    <span className="px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-200 text-[9px] font-bold border border-amber-400/40 shrink-0">
+                      🎤 Voice Note
+                    </span>
+                  )}
+                  {replyingTo.type === 'file' && (
+                    <span className="px-1.5 py-0.2 rounded bg-blue-500/30 text-blue-200 text-[9px] font-bold border border-blue-400/40 shrink-0">
+                      📎 File
+                    </span>
+                  )}
+                  {replyingTo.content.startsWith('Status:') && (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/30 text-emerald-200 text-[9px] font-bold border border-emerald-400/40 shrink-0">
+                      ✨ Status
+                    </span>
+                  )}
+
+                  <span className="truncate text-slate-300 text-xs">
+                    {replyingTo.content && replyingTo.content !== 'Photo Attachment'
+                      ? replyingTo.content
+                      : (replyingTo.type === 'image' ? 'Photo attachment' : replyingTo.type === 'voice' ? 'Voice memo' : replyingTo.content)}
+                  </span>
+                </div>
               </div>
+
+              {/* Replied Image Thumbnail if available */}
+              {(replyingTo.mediaUrl || replyingTo.type === 'image') && (
+                <div className="shrink-0 mr-1">
+                  {replyingTo.mediaUrl ? (
+                    <img
+                      src={replyingTo.mediaUrl}
+                      alt="Thumbnail"
+                      referrerPolicy="no-referrer"
+                      className="w-8 h-8 rounded-lg object-cover border border-white/20 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-lg bg-cyan-900/40 border border-cyan-400/30 flex items-center justify-center text-sm">
+                      📷
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
             <button
               type="button"
               onClick={() => setReplyingTo(null)}
