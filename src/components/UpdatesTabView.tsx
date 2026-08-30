@@ -1101,13 +1101,15 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                         </button>
 
                         {/* Input field */}
-                        <input
-                          type="text"
-                          value={feedText}
-                          onChange={(e) => setFeedText(e.target.value)}
-                          placeholder="Type broadcast update..."
-                          className="flex-1 p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-red-500 font-bold"
-                        />
+                        <div className="flex-1 min-w-0">
+                          <input
+                            type="text"
+                            value={feedText}
+                            onChange={(e) => setFeedText(e.target.value)}
+                            placeholder="Type broadcast update..."
+                            className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-red-500 font-bold"
+                          />
+                        </div>
 
                         {/* Send / Post action button */}
                         <button

@@ -870,7 +870,7 @@ export default function App() {
 
       {/* Main Content Area based on Active Tab - hidden when in ChatRoom */}
       {!selectedChat && (
-        <main className="flex-1 flex flex-col w-full max-w-xl mx-auto pt-16 pb-20 px-1 sm:px-3 min-w-0">
+        <main className="flex-1 flex flex-col w-full max-w-xl mx-auto pt-16 pb-28 px-1 sm:px-3 min-w-0">
           {/* Chats Tab */}
           <div className={activeTab === 'chats' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
             {/* Contacts & Conversations Search Bar */}

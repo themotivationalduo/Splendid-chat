@@ -998,15 +998,17 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
             </button>
 
             {/* Message Input */}
-            <input
-              id="chat-message-input"
-              type="text"
-              value={inputText}
-              onChange={(e) => handleInputChange(e.target.value)}
-              onPaste={handlePaste}
-              placeholder="Message or paste GIF/sticker..."
-              className="flex-1 bg-transparent border-none text-white text-xs sm:text-sm focus:outline-none placeholder-slate-400 font-normal py-1"
-            />
+            <div className="flex-1 min-w-0">
+              <input
+                id="chat-message-input"
+                type="text"
+                value={inputText}
+                onChange={(e) => handleInputChange(e.target.value)}
+                onPaste={handlePaste}
+                placeholder="Message or paste GIF/sticker..."
+                className="w-full bg-transparent border-none text-white text-xs sm:text-sm focus:outline-none placeholder-slate-400 font-normal py-1"
+              />
+            </div>
 
             {/* Paperclip Button */}
             <button

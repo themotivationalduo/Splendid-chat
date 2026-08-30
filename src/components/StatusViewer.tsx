@@ -20,12 +20,42 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPlayingVoice, setIsPlayingVoice] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pauseStartTimeRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number>(Date.now());
 
   const currentStatus = userStatuses[activeIndex];
 
   // Auto advance status
+  useEffect(() => {
+    if (!currentStatus || isPaused) return;
+
+    if (progress === 0) {
+      startTimeRef.current = Date.now();
+    }
+
+    const isVoice = currentStatus.type === 'voice';
+    const duration = isVoice ? (currentStatus.duration || 5) * 1000 : 4000;
+
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current;
+      const pct = Math.min((elapsed / duration) * 100, 100);
+      setProgress(pct);
+
+      if (elapsed >= duration) {
+        clearInterval(progressIntervalRef.current!);
+        handleNext();
+      }
+    }, 40);
+
+    return () => {
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    };
+  }, [activeIndex, userId, isPaused, currentStatus]);
+
+  // Handle voice playback and overall status lifecycle
   useEffect(() => {
     if (!currentStatus) return;
 
@@ -36,24 +66,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
       setIsPlayingVoice(false);
     }
 
-    // Voice statuses play the voice first, progress runs during audio play or falls back to timer
     const isVoice = currentStatus.type === 'voice';
-    const duration = isVoice ? (currentStatus.duration || 5) * 1000 : 4000; // 4 seconds for text/image
-
-    const startTime = Date.now();
-    
-    progressIntervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const pct = Math.min((elapsed / duration) * 100, 100);
-      setProgress(pct);
-
-      if (elapsed >= duration) {
-        clearInterval(progressIntervalRef.current!);
-        handleNext();
-      }
-    }, 40);
-
-    // If voice, play it automatically
     if (isVoice && currentStatus.content) {
       const audio = new Audio(currentStatus.content);
       audioRef.current = audio;
@@ -69,13 +82,28 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
     }
 
     return () => {
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
     };
   }, [activeIndex, userId]);
+
+  // Handle Pause/Resume logic
+  const handleHoldStart = () => {
+    setIsPaused(true);
+    pauseStartTimeRef.current = Date.now();
+    if (audioRef.current) audioRef.current.pause();
+  };
+
+  const handleHoldEnd = () => {
+    if (isPaused && pauseStartTimeRef.current) {
+      const pauseDuration = Date.now() - pauseStartTimeRef.current;
+      startTimeRef.current += pauseDuration;
+      setIsPaused(false);
+      if (audioRef.current && isPlayingVoice) audioRef.current.play();
+    }
+  };
 
   const handleNext = () => {
     if (activeIndex < userStatuses.length - 1) {
@@ -178,6 +206,11 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
         {/* Interactive Interactive Content Area */}
         <div 
           onClick={handleScreenClick}
+          onMouseDown={handleHoldStart}
+          onMouseUp={handleHoldEnd}
+          onMouseLeave={handleHoldEnd}
+          onTouchStart={handleHoldStart}
+          onTouchEnd={handleHoldEnd}
           className="flex-1 w-full flex items-center justify-center relative cursor-pointer"
         >
           {/* TEXT TYPE STATUS */}
