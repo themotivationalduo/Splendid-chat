@@ -303,6 +303,19 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowOptionsDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const THEME_COLORS = [
     { name: 'Classic Purple', bubble: '#701a75', accent: '#38bdf8' },
@@ -554,51 +567,73 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
             <span>📹</span>
           </button>
 
-          {/* 24h Disappearing Messages Toggle */}
-          <button
-            onClick={handleToggleDisappearing}
-            className={`p-1.5 rounded-full transition-all flex items-center justify-center ${
-              chat.disappearingMode 
-                ? 'bg-purple-600/40 text-purple-200 border border-purple-500/50 scale-110 shadow-lg shadow-purple-500/20' 
-                : 'text-slate-200 hover:text-white hover:bg-white/10'
-            }`}
-            title={chat.disappearingMode ? '24h Mode is ON' : 'Enable 24h Disappearing Messages'}
-          >
-            <span className="text-base relative">
-              🕒
-              {chat.disappearingMode && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white/20 animate-pulse" />
-              )}
-            </span>
-          </button>
+          {/* Options Dropdown Menu */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              id="chat-options-menu-btn"
+              onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
+              className={`p-1.5 rounded-full transition-all text-base ${
+                showOptionsDropdown ? 'bg-white/20 text-white' : 'text-slate-200 hover:text-white hover:bg-white/10'
+              }`}
+              title="Chat Settings & Options"
+            >
+              <span>⋮</span>
+            </button>
 
-          {/* Clear Chat Button */}
-          <button
-            onClick={() => setShowClearConfirm(true)}
-            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base"
-            title="Clear All Messages"
-          >
-            <span>🗑️</span>
-          </button>
+            {showOptionsDropdown && (
+              <div className="absolute top-full right-0 mt-2 w-52 rounded-2xl mirror-glass border border-white/20 shadow-2xl overflow-hidden z-[60] animate-in slide-in-from-top-2 duration-150 py-1.5">
+                {/* Chat Info */}
+                <button
+                  onClick={() => { handleHeaderProfileClick(); setShowOptionsDropdown(false); }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 text-slate-200 hover:text-white hover:bg-white/10 transition-colors text-xs font-semibold"
+                >
+                  <span className="text-base">ℹ️</span>
+                  <span>{chat.isGroup ? 'Group Information' : 'Contact Details'}</span>
+                </button>
 
-          {/* Theme Picker Button */}
-          <button
-            onClick={() => setShowThemePicker(true)}
-            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base"
-            title="Customize Chat Theme"
-          >
-            <span>🎨</span>
-          </button>
+                {/* Theme Customization */}
+                <button
+                  onClick={() => { setShowThemePicker(true); setShowOptionsDropdown(false); }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 text-slate-200 hover:text-white hover:bg-white/10 transition-colors text-xs font-semibold"
+                >
+                  <span className="text-base">🎨</span>
+                  <span>Chat Theme</span>
+                </button>
 
-          {/* Options / Media Gallery (3-Dots Menu) */}
-          <button
-            id="chat-info-btn"
-            onClick={handleHeaderProfileClick}
-            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base font-bold"
-            title="Options & Info"
-          >
-            <span>⋮</span>
-          </button>
+                {/* Disappearing Messages */}
+                <button
+                  onClick={() => { handleToggleDisappearing(); setShowOptionsDropdown(false); }}
+                  className={`w-full px-4 py-2.5 flex items-center gap-3 transition-colors text-xs font-semibold ${
+                    chat.disappearingMode ? 'text-purple-400 hover:bg-purple-500/10' : 'text-slate-200 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <span className="text-base">🕒</span>
+                  <div className="flex flex-col items-start">
+                    <span>24h Disappearing Mode</span>
+                    <span className="text-[8px] opacity-60">{chat.disappearingMode ? 'Active' : 'Off'}</span>
+                  </div>
+                </button>
+
+                {/* Media & Files Gallery */}
+                <button
+                  onClick={() => { setIsMediaGalleryOpen(true); setShowOptionsDropdown(false); }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 text-slate-200 hover:text-white hover:bg-white/10 transition-colors text-xs font-semibold border-t border-white/5 mt-1 pt-2"
+                >
+                  <span className="text-base">🖼️</span>
+                  <span>Media & Files Gallery</span>
+                </button>
+
+                {/* Clear Chat */}
+                <button
+                  onClick={() => { setShowClearConfirm(true); setShowOptionsDropdown(false); }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors text-xs font-bold"
+                >
+                  <span className="text-base">🗑️</span>
+                  <span>Clear Chat History</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

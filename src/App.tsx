@@ -861,6 +861,9 @@ export default function App() {
           unreadNotificationsCount={unreadNotificationsCount}
           onOpenNotifications={() => setIsNotificationsOpen(true)}
           onOpenProfile={() => setIsProfileOpen(true)}
+          onLogout={handleLogout}
+          onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+          theme={theme}
           onOpenStartNewChat={() => setIsStartNewChatOpen(true)}
         />
       )}

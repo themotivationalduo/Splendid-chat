@@ -6,6 +6,9 @@ interface HeaderProps {
   unreadNotificationsCount: number;
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
+  onLogout?: () => void;
+  onToggleTheme?: () => void;
+  theme?: 'dark' | 'light';
   onOpenStartNewChat?: () => void;
 }
 
@@ -14,15 +17,20 @@ export const Header: React.FC<HeaderProps> = ({
   unreadNotificationsCount,
   onOpenNotifications,
   onOpenProfile,
+  onLogout,
+  onToggleTheme,
+  theme,
   onOpenStartNewChat
 }) => {
   const [isVisible, setIsVisible] = useState(true);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
-      // Hide during any scrolling (up or down)
       setIsVisible(false);
+      setShowProfileDropdown(false);
 
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
@@ -32,9 +40,18 @@ export const Header: React.FC<HeaderProps> = ({
       }, 250);
     };
 
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowProfileDropdown(false);
+      }
+    };
+
     window.addEventListener('scroll', handleScroll, { passive: true });
+    document.addEventListener('mousedown', handleClickOutside);
+    
     return () => {
       window.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('mousedown', handleClickOutside);
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
     };
   }, []);
@@ -68,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Actions (New Chat, Notification Bell with badge, Profile Avatar) */}
+        {/* Right: Actions (New Chat, Notification Bell with badge, Profile Avatar Dropdown) */}
         <div className="flex items-center gap-1.5">
           {/* Start New Chat Icon Button */}
           {onOpenStartNewChat && (
@@ -97,16 +114,53 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* User Profile Avatar */}
-          <button
-            id="header-profile-btn"
-            onClick={onOpenProfile}
-            className="relative w-8 h-8 rounded-full bg-gradient-to-br from-red-600 via-red-500 to-rose-700 flex items-center justify-center text-white font-extrabold text-sm ring-1 ring-red-500/40 hover:ring-red-400 shadow-md shadow-red-600/30 transition-all active:scale-95 select-none"
-            title="My Profile & Settings"
-          >
-            <span>{currentUser?.avatar || '👤'}</span>
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#121418]" />
-          </button>
+          {/* User Profile Avatar Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              id="header-profile-btn"
+              onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+              className={`relative w-8 h-8 rounded-full bg-gradient-to-br from-red-600 via-red-500 to-rose-700 flex items-center justify-center text-white font-extrabold text-sm ring-1 ring-red-500/40 hover:ring-red-400 shadow-md shadow-red-600/30 transition-all active:scale-95 select-none ${
+                showProfileDropdown ? 'scale-110 ring-2 ring-white/50' : ''
+              }`}
+              title="My Profile & Quick Settings"
+            >
+              <span>{currentUser?.avatar || '👤'}</span>
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#121418]" />
+            </button>
+
+            {showProfileDropdown && (
+              <div className="absolute top-full right-0 mt-3 w-44 rounded-2xl mirror-glass border border-white/20 shadow-2xl overflow-hidden z-[60] animate-in slide-in-from-top-2 duration-150 py-1.5">
+                <div className="px-4 py-2 border-b border-white/5 mb-1.5">
+                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">My Account</p>
+                  <p className="text-[11px] text-white font-bold truncate">@{currentUser?.username}</p>
+                </div>
+
+                <button
+                  onClick={() => { onOpenProfile(); setShowProfileDropdown(false); }}
+                  className="w-full px-4 py-2 flex items-center gap-3 text-slate-200 hover:text-white hover:bg-white/10 transition-colors text-xs font-semibold"
+                >
+                  <span>👤</span>
+                  <span>View Profile</span>
+                </button>
+
+                <button
+                  onClick={() => { onToggleTheme?.(); setShowProfileDropdown(false); }}
+                  className="w-full px-4 py-2 flex items-center gap-3 text-slate-200 hover:text-white hover:bg-white/10 transition-colors text-xs font-semibold"
+                >
+                  <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
+                  <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+                </button>
+
+                <button
+                  onClick={() => { onLogout?.(); setShowProfileDropdown(false); }}
+                  className="w-full px-4 py-2 flex items-center gap-3 text-rose-400 hover:text-white hover:bg-rose-600/30 transition-colors text-xs font-bold border-t border-white/5 mt-1.5 pt-2"
+                >
+                  <span>🚪</span>
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

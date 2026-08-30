@@ -40,6 +40,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [allowReshare, setAllowReshare] = useState(currentUser.allowReshare !== false);
   const [allowPhoneNumberVisibility, setAllowPhoneNumberVisibility] = useState(currentUser.allowPhoneNumberVisibility !== false);
   const [activeAccordion, setActiveAccordion] = useState<string | null>('profile');
+  const [isWallpaperDropdownOpen, setIsWallpaperDropdownOpen] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
@@ -77,6 +78,19 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
     return () => clearTimeout(timer);
   }, [username, currentUser.id, currentUser.username]);
+
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const wallpaperDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wallpaperDropdownRef.current && !wallpaperDropdownRef.current.contains(event.target as Node)) {
+        setIsWallpaperDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -258,43 +272,62 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             )}
           </div>
 
-          {/* ACCORDION 3: 🖼️ WALLPAPERS */}
-          <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/[0.01]">
-            <button
-              type="button"
-              onClick={() => setActiveAccordion(activeAccordion === 'wallpaper' ? null : 'wallpaper')}
-              className="w-full px-4 py-3 flex items-center justify-between text-left font-bold text-xs uppercase tracking-wider text-slate-200 bg-white/[0.03] hover:bg-white/[0.06] transition-all select-none"
-            >
-              <span className="flex items-center gap-2">
-                <span>🖼️</span> Chat Room Wallpapers
-              </span>
-              <span>{activeAccordion === 'wallpaper' ? '▲' : '▼'}</span>
-            </button>
-            
-            {activeAccordion === 'wallpaper' && (
-              <div className="p-4 border-t border-white/5 animate-in slide-in-from-top-1 duration-100 space-y-2">
-                <div className="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto custom-scrollbar">
-                  {WALLPAPER_OPTIONS.map((wp) => (
-                    <button
-                      key={wp.id}
-                      type="button"
-                      onClick={() => setSelectedWallpaper(wp.id)}
-                      className={`p-2 rounded-xl text-left transition-all flex items-center gap-2 ${wp.class} ${
-                        selectedWallpaper === wp.id
-                          ? 'ring-2 ring-red-500 scale-[1.01]'
-                          : 'opacity-70 hover:opacity-100 border border-white/10'
-                      }`}
-                    >
-                      <span className="text-base shrink-0">🎨</span>
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-bold text-white truncate">{wp.name}</div>
-                        <div className="text-[9px] text-slate-300 truncate">{wp.pattern || 'Abstract Gradient'}</div>
-                      </div>
-                    </button>
-                  ))}
+          {/* SECTION: 🖼️ WALLPAPERS DROPDOWN */}
+          <div className="space-y-1.5" ref={wallpaperDropdownRef}>
+            <label className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">Chat Wallpaper</label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsWallpaperDropdownOpen(!isWallpaperDropdownOpen)}
+                className={`w-full h-12 px-4 rounded-xl mirror-glass-input border border-white/10 flex items-center justify-between text-xs transition-all ${
+                  isWallpaperDropdownOpen ? 'ring-1 ring-red-500 border-red-500/50' : ''
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">🖼️</span>
+                  <div className="text-left">
+                    <div className="font-bold text-white">
+                      {WALLPAPER_OPTIONS.find(w => w.id === selectedWallpaper)?.name || 'Default'}
+                    </div>
+                    <div className="text-[10px] text-slate-400">Selected Theme</div>
+                  </div>
                 </div>
-              </div>
-            )}
+                <span className={`transition-transform duration-200 ${isWallpaperDropdownOpen ? 'rotate-180' : ''}`}>▼</span>
+              </button>
+
+              {isWallpaperDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 p-2 rounded-2xl mirror-glass border border-white/20 shadow-2xl z-20 animate-in slide-in-from-top-2 duration-150">
+                  <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto custom-scrollbar p-1">
+                    {WALLPAPER_OPTIONS.map((wp) => (
+                      <button
+                        key={wp.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedWallpaper(wp.id);
+                          setIsWallpaperDropdownOpen(false);
+                        }}
+                        className={`w-full p-2.5 rounded-xl text-left transition-all flex items-center gap-3 ${wp.class} ${
+                          selectedWallpaper === wp.id
+                            ? 'ring-2 ring-red-500 bg-white/10'
+                            : 'hover:bg-white/5 border border-white/5'
+                        }`}
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-sm shrink-0">
+                          🎨
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-white truncate">{wp.name}</div>
+                          <div className="text-[9px] text-slate-300 truncate">{wp.pattern || 'Premium Gradient'}</div>
+                        </div>
+                        {selectedWallpaper === wp.id && (
+                          <span className="ml-auto text-emerald-400 text-xs font-bold">✓</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ACCORDION 4: ⚙️ STATUS PRIVACY & RESHARING */}
