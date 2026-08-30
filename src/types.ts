@@ -169,7 +169,6 @@ export interface BroadcastFeed {
   createdAt: number;
   followers?: string[]; // userIds
 }
-
 export interface BroadcastFeedPost {
   id: string;
   feedId: string;
@@ -181,6 +180,15 @@ export interface BroadcastFeedPost {
   duration?: number;
   createdAt: number;
   reactions?: { [userId: string]: string }; // userId -> emoji
+}
+
+export interface CallSignal {
+  id: string;
+  callId: string;
+  senderId: string;
+  type: 'offer' | 'answer' | 'ice-candidate';
+  payload: any;
+  createdAt: number;
 }
 
 

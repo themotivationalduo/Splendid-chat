@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Chat } from '../types';
 import { playGlassChimeSound } from '../services/audioService';
+import { sendCallSignal, subscribeToCallSignals } from '../services/firestoreService';
 
 interface ActiveCallModalProps {
+  callId?: string;
+  isCaller?: boolean;
   chat: Chat | null;
   isVideo: boolean;
   status?: 'ringing' | 'accepted' | 'declined' | 'ended';
@@ -10,6 +13,8 @@ interface ActiveCallModalProps {
 }
 
 export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
+  callId = '',
+  isCaller = false,
   chat,
   isVideo,
   status = 'ringing',
@@ -19,15 +24,68 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isCameraOff, setIsCameraOff] = useState(false);
+  const peerConnection = React.useRef<RTCPeerConnection | null>(null);
+  const localStream = React.useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    if (!chat || status === 'ringing') return;
-    setDuration(0);
-    const interval = setInterval(() => {
-      setDuration(d => d + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [chat, status]);
+    if (!chat || status !== 'accepted') return;
+
+    const setupWebRTC = async () => {
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+      peerConnection.current = pc;
+
+      // Get local stream
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: true, 
+        video: isVideo 
+      });
+      localStream.current = stream;
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          sendCallSignal(callId, 'local-user', 'ice-candidate', event.candidate);
+        }
+      };
+
+      pc.ontrack = (event) => {
+        const remoteVideo = document.getElementById('remoteVideo') as HTMLVideoElement;
+        if (remoteVideo) remoteVideo.srcObject = event.streams[0];
+      };
+
+      // Subscribe to signals from peer
+      const unsubscribe = subscribeToCallSignals(callId, 'local-user', async (signal) => {
+        if (signal.type === 'offer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          sendCallSignal(callId, 'local-user', 'answer', answer);
+        } else if (signal.type === 'answer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));
+        } else if (signal.type === 'ice-candidate') {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.payload));
+        }
+      });
+
+      if (isCaller) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendCallSignal(callId, 'local-user', 'offer', offer);
+      }
+
+      return unsubscribe;
+    };
+
+    const cleanup = setupWebRTC();
+    
+    return () => {
+      cleanup.then(unsub => unsub && unsub());
+      localStream.current?.getTracks().forEach(track => track.stop());
+      peerConnection.current?.close();
+    };
+  }, [chat, status, isCaller, callId, isVideo]);
 
   if (!chat) return null;
 
@@ -58,14 +116,18 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
 
         {/* Center Avatar & Info */}
         <div className="my-auto flex flex-col items-center space-y-4">
-          <div className="relative">
-            <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-red-500/40 flex items-center justify-center text-5xl shadow-2xl animate-pulse">
-              {chat.avatar || '👤'}
+          {isVideo && status === 'accepted' ? (
+             <video id="remoteVideo" autoPlay playsInline className="w-32 h-32 rounded-full object-cover border-2 border-emerald-500/40" />
+          ) : (
+            <div className="relative">
+              <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-red-500/40 flex items-center justify-center text-5xl shadow-2xl animate-pulse">
+                {chat.avatar || '👤'}
+              </div>
+              <span className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#121418] flex items-center justify-center text-xs">
+                {isVideo ? '📹' : '📞'}
+              </span>
             </div>
-            <span className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#121418] flex items-center justify-center text-xs">
-              {isVideo ? '📹' : '📞'}
-            </span>
-          </div>
+          )}
 
           <div className="space-y-1">
             <h3 className="text-xl font-extrabold text-white">{chat.name}</h3>

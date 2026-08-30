@@ -12,7 +12,7 @@ import {
   orderBy, 
   onSnapshot 
 } from './firebase';
-import { User, Chat, Message, CallLog, PushNotification, CallSession, UserStatus, BroadcastFeed, BroadcastFeedPost } from '../types';
+import { User, Chat, Message, CallLog, PushNotification, CallSession, UserStatus, BroadcastFeed, BroadcastFeedPost, CallSignal } from '../types';
 
 export function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj) || obj instanceof Date) {
@@ -1137,6 +1137,45 @@ export function subscribeToCallSession(
     }
   }, (err) => {
     console.warn('Call session subscription error:', err);
+  });
+}
+
+export async function sendCallSignal(
+  callId: string,
+  senderId: string,
+  type: 'offer' | 'answer' | 'ice-candidate',
+  payload: any
+): Promise<void> {
+  const signalRef = doc(collection(db, 'calls', callId, 'signaling'));
+  await setDoc(signalRef, {
+    id: signalRef.id,
+    callId,
+    senderId,
+    type,
+    payload,
+    createdAt: Date.now()
+  });
+}
+
+export function subscribeToCallSignals(
+  callId: string,
+  senderId: string, // Subscribe to signals sent BY THE PEER (not self)
+  callback: (signal: CallSignal) => void
+): () => void {
+  const signalsRef = collection(db, 'calls', callId, 'signaling');
+  const q = query(signalsRef, orderBy('createdAt', 'asc'));
+
+  return onSnapshot(q, (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'added') {
+        const signal = change.doc.data() as CallSignal;
+        if (signal.senderId !== senderId) {
+          callback(signal);
+        }
+      }
+    });
+  }, (err) => {
+    console.warn('Call signals subscription error:', err);
   });
 }
 

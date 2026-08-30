@@ -539,7 +539,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
 
       {/* Messages Stream Container */}
       <div
-        className="flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar pt-20 pb-36"
+        className="flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar pt-20 pb-36 overscroll-contain"
         onScroll={handleChatScroll}
       >
         {messages.length === 0 ? (
@@ -569,7 +569,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                 onMouseMove={(e) => handleDragMove(e.clientX, e.clientY)}
                 onMouseUp={() => handleDragEnd(msg)}
                 onMouseLeave={() => handleDragEnd(msg)}
-                className={`flex flex-col ${isUser ? 'items-end animate-in slide-in-from-right-4 fade-in' : 'items-start animate-in slide-in-from-left-4 fade-in'} group relative transition-all duration-75 select-none touch-none`}
+                className={`flex flex-col ${isUser ? 'items-end animate-in slide-in-from-right-4 fade-in' : 'items-start animate-in slide-in-from-left-4 fade-in'} group relative transition-all duration-75 select-none touch-pan-y`}
               >
                 {/* Swipe-to-Reply Interactive Back-layer Indicator */}
                 {swipingMsgId === msg.id && swipeOffset > 5 && (
