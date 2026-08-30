@@ -110,7 +110,7 @@ export const MessageBubble = React.memo(({
     >
       {!isUser && (
         <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm shadow-sm shrink-0">
-          {chat.avatar || '👤'}
+          {msg.senderAvatar || chat.avatar || '👤'}
         </div>
       )}
       
@@ -309,7 +309,7 @@ export const MessageBubble = React.memo(({
             duration={msg.mediaMeta?.duration || 17}
             waveData={msg.mediaMeta?.waveData}
             isUserMessage={isUser}
-            senderAvatar={isUser ? currentUser.avatar : chat?.avatar || '👤'}
+            senderAvatar={isUser ? currentUser.avatar : msg.senderAvatar || chat?.avatar || '👤'}
             accentColor={chat?.accentColor}
           />
         ) : (

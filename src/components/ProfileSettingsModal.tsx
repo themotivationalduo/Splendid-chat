@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User as UserType, WALLPAPER_OPTIONS } from '../types';
+import { User as UserType, WALLPAPER_OPTIONS, APP_COLOR_OPTIONS } from '../types';
 import { checkUsernameAvailable } from '../services/firestoreService';
 
 interface ProfileSettingsModalProps {
@@ -39,6 +39,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [bio, setBio] = useState(currentUser.bio || '');
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar || '👤');
   const [selectedWallpaper, setSelectedWallpaper] = useState(currentUser.wallpaper || 'midnight');
+  const [selectedAppColor, setSelectedAppColor] = useState(currentUser.appColor || 'ruby');
   const [allowReshare, setAllowReshare] = useState(currentUser.allowReshare !== false);
   const [allowPhoneNumberVisibility, setAllowPhoneNumberVisibility] = useState(currentUser.allowPhoneNumberVisibility !== false);
   const [statusPrivacy, setStatusPrivacy] = useState(currentUser.statusPrivacy || 'everyone');
@@ -120,6 +121,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
         bio: bio.trim(),
         avatar: selectedAvatar,
         wallpaper: selectedWallpaper,
+        appColor: selectedAppColor,
         allowReshare: allowReshare,
         allowPhoneNumberVisibility: allowPhoneNumberVisibility,
         statusPrivacy: statusPrivacy,
@@ -278,61 +280,65 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             )}
           </div>
 
-          {/* SECTION: 🖼️ WALLPAPERS DROPDOWN */}
-          <div className="space-y-1.5" ref={wallpaperDropdownRef}>
-            <label className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">Chat Wallpaper</label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsWallpaperDropdownOpen(!isWallpaperDropdownOpen)}
-                className={`w-full h-12 px-4 rounded-xl mirror-glass-input border border-white/10 flex items-center justify-between text-xs transition-all ${
-                  isWallpaperDropdownOpen ? 'ring-1 ring-red-500 border-red-500/50' : ''
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">🖼️</span>
-                  <div className="text-left">
-                    <div className="font-bold text-white">
-                      {WALLPAPER_OPTIONS.find(w => w.id === selectedWallpaper)?.name || 'Default'}
-                    </div>
-                    <div className="text-[10px] text-slate-400">Selected Theme</div>
-                  </div>
-                </div>
-                <span className={`transition-transform duration-200 ${isWallpaperDropdownOpen ? 'rotate-180' : ''}`}>▼</span>
-              </button>
-
-              {isWallpaperDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-2 p-2 rounded-2xl mirror-glass border border-white/20 shadow-2xl z-20 animate-in slide-in-from-top-2 duration-150">
-                  <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto custom-scrollbar p-1">
-                    {WALLPAPER_OPTIONS.map((wp) => (
+          {/* SECTION: 🎨 ENTIRE APP COLOR THEME SELECTOR (5 Classic & 5 Neon) */}
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">Entire App Color Theme (5 Classic & 5 Neon)</label>
+            <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase font-bold text-slate-300">Classic Colors</p>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {APP_COLOR_OPTIONS.filter(c => c.category === 'classic').map((color) => {
+                    const isSelected = selectedAppColor === color.id;
+                    return (
                       <button
-                        key={wp.id}
+                        key={color.id}
                         type="button"
-                        onClick={() => {
-                          setSelectedWallpaper(wp.id);
-                          setIsWallpaperDropdownOpen(false);
-                        }}
-                        className={`w-full p-2.5 rounded-xl text-left transition-all flex items-center gap-3 ${wp.class} ${
-                          selectedWallpaper === wp.id
-                            ? 'ring-2 ring-red-500 bg-white/10'
-                            : 'hover:bg-white/5 border border-white/5'
+                        onClick={() => setSelectedAppColor(color.id)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer border relative ${
+                          isSelected
+                            ? 'bg-white/25 border-white ring-2 ring-red-500 scale-105 shadow-md'
+                            : 'bg-black/30 border-white/10 hover:bg-white/10'
                         }`}
+                        title={color.name}
                       >
-                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-sm shrink-0">
-                          🎨
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[11px] font-bold text-white truncate">{wp.name}</div>
-                          <div className="text-[9px] text-slate-300 truncate">{wp.pattern || 'Premium Gradient'}</div>
-                        </div>
-                        {selectedWallpaper === wp.id && (
-                          <span className="ml-auto text-emerald-400 text-xs font-bold">✓</span>
+                        <span className="text-lg">{color.icon}</span>
+                        <span className="text-[8px] font-bold text-white truncate w-full text-center mt-0.5">{color.name.split(' ')[0]}</span>
+                        {isSelected && (
+                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-[8px] text-white flex items-center justify-center">✓</span>
                         )}
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <p className="text-[10px] uppercase font-bold text-cyan-400">Neon Glow Colors</p>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {APP_COLOR_OPTIONS.filter(c => c.category === 'neon').map((color) => {
+                    const isSelected = selectedAppColor === color.id;
+                    return (
+                      <button
+                        key={color.id}
+                        type="button"
+                        onClick={() => setSelectedAppColor(color.id)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer border relative ${
+                          isSelected
+                            ? 'bg-white/20 border-cyan-400 ring-2 ring-cyan-400 scale-105 shadow-[0_0_12px_rgba(0,242,254,0.5)]'
+                            : 'bg-black/40 border-white/10 hover:bg-white/10'
+                        }`}
+                        title={color.name}
+                      >
+                        <span className="text-lg">{color.icon}</span>
+                        <span className="text-[8px] font-bold text-cyan-200 truncate w-full text-center mt-0.5">{color.name.split(' ')[1] || color.name}</span>
+                        {isSelected && (
+                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-cyan-500 text-[8px] text-slate-950 font-bold flex items-center justify-center">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 

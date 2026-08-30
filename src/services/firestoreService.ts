@@ -354,6 +354,7 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
           creatorId: data.creatorId || '',
           groupMembers: data.groupMembers || [],
           isPinned: data.pinned || data.isPinned || false,
+          pinOrder: data.pinOrder || 0,
           isMuted: data.muted || data.isMuted || false,
           unreadCount: data.unreadCount || 0,
           createdAt: data.createdAt || Date.now(),
@@ -373,10 +374,13 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
       }
     });
 
-    // Sort by pinned then most recent
+    // Sort by pinned (and pinOrder) then most recent
     chats.sort((a, b) => {
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
+      if (a.isPinned && b.isPinned) {
+        return (a.pinOrder || 0) - (b.pinOrder || 0);
+      }
       return (b.createdAt || 0) - (a.createdAt || 0);
     });
 
@@ -423,6 +427,7 @@ export async function createOrGetFirestoreChat(
       lastSeen: targetUser.lastSeen || 'Active now',
       isGroup: false,
       isPinned: data.pinned || data.isPinned || false,
+      pinOrder: data.pinOrder || 0,
       isMuted: data.muted || data.isMuted || false,
       unreadCount: 0,
       participant: targetUser,
@@ -1703,5 +1708,19 @@ export async function markStatusAsViewed(statusId: string, userId: string): Prom
         views: arrayUnion(userId)
       });
     }
+  }
+}
+
+export async function updateChatPinOrder(chatId: string, isPinned: boolean, pinOrder: number): Promise<void> {
+  try {
+    const chatRef = doc(db, 'chats', chatId);
+    await updateDoc(chatRef, {
+      pinned: isPinned,
+      isPinned: isPinned,
+      pinOrder: pinOrder,
+      updatedAt: Date.now()
+    });
+  } catch (e) {
+    console.warn('Error updating chat pin order:', e);
   }
 }

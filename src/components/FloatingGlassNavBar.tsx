@@ -49,9 +49,9 @@ export const FloatingGlassNavBar: React.FC<FloatingGlassNavBarProps> = ({
       emoji: '👤'
     },
     {
-      id: 'groups',
-      label: 'Groups',
-      emoji: '👥'
+      id: 'updates',
+      label: 'Updates',
+      emoji: '⏳'
     },
     {
       id: 'calls',

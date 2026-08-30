@@ -22,7 +22,7 @@ import { ForwardMessageModal } from './components/ForwardMessageModal';
 import { UpdatesTabView } from './components/UpdatesTabView';
 import { StatusViewer } from './components/StatusViewer';
 
-import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS, CallSession, UserStatus } from './types';
+import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS, APP_COLOR_OPTIONS, CallSession, UserStatus, getThemeStyles } from './types';
 import {
   getLocalUser,
   saveLocalUser,
@@ -48,6 +48,7 @@ import {
   subscribeToUsers,
   updateUserPresence,
   togglePinMessage,
+  updateChatPinOrder,
   autoCleanupExpiredMediaForUser,
   saveChatDraft,
   createCallSession,
@@ -58,10 +59,20 @@ import {
   postUserStatus
 } from './services/firestoreService';
 import { playGlassChimeSound, RecordingResult } from './services/audioService';
+import { requestPushPermission, triggerPushNotification } from './services/notificationService';
 
 export default function App() {
   // Application State
   const [currentUser, setCurrentUser] = useState<User | null>(getLocalUser());
+  const lastMsgMapRef = React.useRef<Record<string, string>>({});
+  const isInitialChatLoadRef = React.useRef(true);
+
+  // Request push notification permission on user login/mount
+  useEffect(() => {
+    if (currentUser) {
+      requestPushPermission().catch(() => {});
+    }
+  }, [currentUser?.id]);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('splendid_chat_theme') as 'dark' | 'light') || 'dark';
   });
@@ -386,6 +397,31 @@ export default function App() {
     setIsLoadingSkeleton(true);
 
     const unsubscribe = subscribeToUserChats(currentUser.id, currentUser.phoneNumber, (firestoreChats) => {
+      if (!isInitialChatLoadRef.current) {
+        firestoreChats.forEach(chat => {
+          const lastMsg = chat.lastMessage;
+          if (lastMsg && lastMsg.senderId && lastMsg.senderId !== currentUser.id) {
+            const msgKey = `${chat.id}_${lastMsg.timestamp}_${lastMsg.text}`;
+            if (lastMsgMapRef.current[chat.id] !== msgKey) {
+              lastMsgMapRef.current[chat.id] = msgKey;
+              triggerPushNotification(chat.name, lastMsg.text, {
+                chatId: chat.id,
+                senderId: lastMsg.senderId,
+                avatar: chat.avatar,
+                playSound: true
+              });
+            }
+          }
+        });
+      } else {
+        firestoreChats.forEach(chat => {
+          if (chat.lastMessage) {
+            lastMsgMapRef.current[chat.id] = `${chat.id}_${chat.lastMessage.timestamp}_${chat.lastMessage.text}`;
+          }
+        });
+        isInitialChatLoadRef.current = false;
+      }
+
       setChats(firestoreChats);
       setIsLoadingSkeleton(false);
 
@@ -624,8 +660,56 @@ export default function App() {
     }
   };
 
-  const handleTogglePin = (chatId: string) => {
-    setChats(prev => prev.map(c => c.id === chatId ? { ...c, isPinned: !c.isPinned } : c));
+  const handleTogglePin = async (chatId: string) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (!chat) return;
+    const newIsPinned = !chat.isPinned;
+    const newPinOrder = newIsPinned ? chats.filter(c => c.isPinned).length : 0;
+
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, isPinned: newIsPinned, pinOrder: newPinOrder } : c));
+    await updateChatPinOrder(chatId, newIsPinned, newPinOrder);
+  };
+
+  const handleMovePinUp = async (chatId: string) => {
+    const pinnedChats = chats.filter(c => c.isPinned).sort((a, b) => (a.pinOrder || 0) - (b.pinOrder || 0));
+    const index = pinnedChats.findIndex(c => c.id === chatId);
+    if (index > 0) {
+      const prevChat = pinnedChats[index - 1];
+      const currChat = pinnedChats[index];
+      
+      const newCurrOrder = prevChat.pinOrder ?? (index - 1);
+      const newPrevOrder = currChat.pinOrder ?? index;
+
+      setChats(prev => prev.map(c => {
+        if (c.id === currChat.id) return { ...c, pinOrder: newCurrOrder };
+        if (c.id === prevChat.id) return { ...c, pinOrder: newPrevOrder };
+        return c;
+      }));
+
+      await updateChatPinOrder(currChat.id, true, newCurrOrder);
+      await updateChatPinOrder(prevChat.id, true, newPrevOrder);
+    }
+  };
+
+  const handleMovePinDown = async (chatId: string) => {
+    const pinnedChats = chats.filter(c => c.isPinned).sort((a, b) => (a.pinOrder || 0) - (b.pinOrder || 0));
+    const index = pinnedChats.findIndex(c => c.id === chatId);
+    if (index >= 0 && index < pinnedChats.length - 1) {
+      const nextChat = pinnedChats[index + 1];
+      const currChat = pinnedChats[index];
+      
+      const newCurrOrder = nextChat.pinOrder ?? (index + 1);
+      const newNextOrder = currChat.pinOrder ?? index;
+
+      setChats(prev => prev.map(c => {
+        if (c.id === currChat.id) return { ...c, pinOrder: newCurrOrder };
+        if (c.id === nextChat.id) return { ...c, pinOrder: newNextOrder };
+        return c;
+      }));
+
+      await updateChatPinOrder(currChat.id, true, newCurrOrder);
+      await updateChatPinOrder(nextChat.id, true, newNextOrder);
+    }
   };
 
   // Open User Profile Modal (Phone & Username Display)
@@ -759,8 +843,25 @@ export default function App() {
     setIsAuthOpen(true);
   };
 
+  const themeStyles = getThemeStyles(currentUser?.appColor);
+
+  useEffect(() => {
+    const appColor = currentUser?.appColor || 'ruby';
+    const st = getThemeStyles(appColor);
+    document.documentElement.style.setProperty('--theme-primary', st.primaryHex);
+    document.documentElement.style.setProperty('--theme-secondary', st.secondaryHex);
+    document.documentElement.style.setProperty('--theme-glow', st.glow);
+  }, [currentUser?.appColor]);
+
   return (
-    <div className={`min-h-screen animated-gradient-bg ${theme === 'light' ? 'light-theme text-black' : 'dark-theme text-slate-100'} font-['Plus_Jakarta_Sans',sans-serif] flex flex-col relative overflow-x-hidden selection:bg-red-500/30 selection:text-red-200`}>
+    <div 
+      className={`min-h-screen animated-gradient-bg ${theme === 'light' ? 'light-theme text-black' : 'dark-theme text-slate-100'} font-['Plus_Jakarta_Sans',sans-serif] flex flex-col relative overflow-x-hidden selection:bg-red-500/30 selection:text-red-200`}
+      style={{
+        ['--theme-primary' as any]: themeStyles.primaryHex,
+        ['--theme-secondary' as any]: themeStyles.secondaryHex,
+        ['--theme-glow' as any]: themeStyles.glow,
+      } as React.CSSProperties}
+    >
       {/* 300ms Rotating Splash Screen Overlay */}
       {showSplash && (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0a0c10] select-none pointer-events-auto transition-opacity duration-300">
@@ -974,6 +1075,8 @@ export default function App() {
                 onSelectChat={handleSelectChat}
                 onDeleteChat={handleDeleteChat}
                 onTogglePin={handleTogglePin}
+                onMovePinUp={handleMovePinUp}
+                onMovePinDown={handleMovePinDown}
                 onOpenNewChat={() => setIsStartNewChatOpen(true)}
                 onOpenUserProfile={handleOpenUserProfile}
                 onOpenGroupProfile={handleOpenGroupProfile}
@@ -1147,53 +1250,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Groups Tab */}
-          <div className={activeTab === 'groups' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
-            <div className="w-full px-3 py-3 space-y-4 pb-28">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-                  <span>👥</span>
-                  <span>Group Channels</span>
-                </h3>
-                <button
-                  onClick={() => setIsCreateGroupOpen(true)}
-                  className="px-3.5 py-1.5 rounded-full hero-red-pill text-white font-bold text-xs shadow-md shadow-rose-600/30 flex items-center gap-1.5 active:scale-95 transition-all"
-                >
-                  <span>➕</span>
-                  <span>Create Group</span>
-                </button>
-              </div>
-
-              {chats.filter(c => c.isGroup).length === 0 ? (
-                <div className="p-8 rounded-[24px] bg-[#12141d]/85 border border-white/10 text-center space-y-3 shadow-xl">
-                  <div className="text-3xl">👥</div>
-                  <h4 className="text-sm font-bold text-white">No groups yet</h4>
-                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                    Create a group chat to converse with multiple contacts simultaneously with rich media and real-time syncing.
-                  </p>
-                  <button
-                    onClick={() => setIsCreateGroupOpen(true)}
-                    className="mt-2 px-5 py-2.5 rounded-full hero-red-pill text-white text-xs font-bold shadow-lg shadow-rose-600/30 active:scale-95 transition-all"
-                  >
-                    ➕ Create New Group
-                  </button>
-                </div>
-              ) : (
-                <ChatList
-                  chats={chats.filter(c => c.isGroup)}
-                  selectedChatId={selectedChat?.id || null}
-                  onSelectChat={handleSelectChat}
-                  onDeleteChat={handleDeleteChat}
-                  onTogglePin={handleTogglePin}
-                  onOpenNewChat={() => setIsCreateGroupOpen(true)}
-                  onOpenGroupProfile={handleOpenGroupProfile}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Updates Tab */}
-          <div className={activeTab === 'updates' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
+          {/* Updates Tab (Unified Hub for Statuses, Groups, and Broadcast Feeds) */}
+          <div className={activeTab === 'updates' || activeTab === 'groups' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
             {currentUser && (
               <UpdatesTabView
                 currentUser={currentUser}
@@ -1202,6 +1260,13 @@ export default function App() {
                 onOpenStatusViewer={(userId, statuses) => {
                   setActiveStatusViewer({ userId, statuses });
                 }}
+                chats={chats}
+                selectedChatId={selectedChat?.id || null}
+                onSelectChat={handleSelectChat}
+                onDeleteChat={handleDeleteChat}
+                onTogglePin={handleTogglePin}
+                onOpenCreateGroup={() => setIsCreateGroupOpen(true)}
+                onOpenGroupProfile={handleOpenGroupProfile}
               />
             )}
           </div>
@@ -1315,6 +1380,89 @@ export default function App() {
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+
+                {/* App Color Theme Selector in Settings Tab (5 Classic & 5 Neon Colors) */}
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-lg">🎨</span>
+                      <div>
+                        <div className="text-xs font-bold text-slate-100">Entire App Color Theme</div>
+                        <div className="text-[10px] text-slate-400">
+                          Choose from 5 classic and 5 neon color palettes (automatically applied)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Classic Colors Category */}
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Classic Colors (5)</p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {APP_COLOR_OPTIONS.filter(c => c.category === 'classic').map((color) => {
+                        const isSelected = (currentUser.appColor || 'ruby') === color.id;
+                        return (
+                          <button
+                            key={color.id}
+                            type="button"
+                            onClick={async () => {
+                              if (currentUser) {
+                                const updated = await updateUserProfile(currentUser.id, { appColor: color.id });
+                                if (updated) setCurrentUser(updated);
+                              }
+                            }}
+                            className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer border relative group ${
+                              isSelected 
+                                ? 'bg-white/15 border-white ring-2 ring-red-500 scale-105 shadow-lg' 
+                                : 'bg-black/30 border-white/10 hover:bg-white/10'
+                            }`}
+                            title={color.name}
+                          >
+                            <span className="text-xl mb-1">{color.icon}</span>
+                            <span className="text-[9px] font-bold text-slate-200 truncate w-full text-center">{color.name.split(' ')[0]}</span>
+                            {isSelected && (
+                              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-[9px] text-white flex items-center justify-center shadow">✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Neon Colors Category */}
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[10px] uppercase font-extrabold text-cyan-400 tracking-wider">Neon Glow Colors (5)</p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {APP_COLOR_OPTIONS.filter(c => c.category === 'neon').map((color) => {
+                        const isSelected = (currentUser.appColor || 'ruby') === color.id;
+                        return (
+                          <button
+                            key={color.id}
+                            type="button"
+                            onClick={async () => {
+                              if (currentUser) {
+                                const updated = await updateUserProfile(currentUser.id, { appColor: color.id });
+                                if (updated) setCurrentUser(updated);
+                              }
+                            }}
+                            className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer border relative group ${
+                              isSelected 
+                                ? 'bg-white/20 border-cyan-400 ring-2 ring-cyan-400 scale-105 shadow-[0_0_15px_rgba(0,242,254,0.5)]' 
+                                : 'bg-black/40 border-white/10 hover:bg-white/10'
+                            }`}
+                            title={color.name}
+                          >
+                            <span className="text-xl mb-1">{color.icon}</span>
+                            <span className="text-[9px] font-bold text-cyan-200 truncate w-full text-center">{color.name.split(' ')[1] || color.name}</span>
+                            {isSelected && (
+                              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-cyan-500 text-[9px] text-slate-950 font-extrabold flex items-center justify-center shadow">✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 

@@ -382,5 +382,32 @@ button:active,
   border-radius: 1.25rem !important;
 }
 
+/* Dynamic App Theme Variables & Utility Classes */
+:root {
+  --theme-primary: #e11d48;
+  --theme-secondary: #991b1b;
+  --theme-glow: rgba(225, 29, 72, 0.45);
+}
+
+.theme-bg {
+  background-color: var(--theme-primary) !important;
+}
+.theme-bg:hover {
+  background-color: var(--theme-secondary) !important;
+}
+.theme-text {
+  color: var(--theme-primary) !important;
+}
+.theme-border {
+  border-color: var(--theme-primary) !important;
+}
+.theme-shadow {
+  box-shadow: 0 4px 20px var(--theme-glow) !important;
+}
+.theme-gradient {
+  background: linear-gradient(135deg, var(--theme-primary), var(--theme-secondary)) !important;
+}
+
+
 
 

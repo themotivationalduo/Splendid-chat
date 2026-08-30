@@ -7,6 +7,8 @@ interface ChatListProps {
   onSelectChat: (chat: Chat) => void;
   onDeleteChat: (chatId: string) => void;
   onTogglePin: (chatId: string) => void;
+  onMovePinUp?: (chatId: string) => void;
+  onMovePinDown?: (chatId: string) => void;
   onOpenNewChat: () => void;
   onOpenUserProfile?: (user: User) => void;
   onOpenGroupProfile?: (chat: Chat) => void;
@@ -20,6 +22,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   onSelectChat,
   onDeleteChat,
   onTogglePin,
+  onMovePinUp,
+  onMovePinDown,
   onOpenNewChat,
   onOpenUserProfile,
   onOpenGroupProfile,
@@ -249,6 +253,31 @@ export const ChatList: React.FC<ChatListProps> = ({
                       <span>📌</span>
                       <span>{chat.isPinned ? 'Unpin chat' : 'Pin to top'}</span>
                     </button>
+
+                    {chat.isPinned && (
+                      <>
+                        <button
+                          onClick={() => {
+                            if (onMovePinUp) onMovePinUp(chat.id);
+                            setActiveMenuChatId(null);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-slate-200 hover:bg-white/10 transition-colors text-left"
+                        >
+                          <span>⬆️</span>
+                          <span>Move Pin Up</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (onMovePinDown) onMovePinDown(chat.id);
+                            setActiveMenuChatId(null);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-slate-200 hover:bg-white/10 transition-colors text-left"
+                        >
+                          <span>⬇️</span>
+                          <span>Move Pin Down</span>
+                        </button>
+                      </>
+                    )}
 
                     <button
                       onClick={() => {
