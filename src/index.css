@@ -253,3 +253,39 @@ html.dark .mirror-glass-input,
   color: #94a3b8;
 }
 
+/* ==================== WINDOW CONTROLS OVERLAY SUPPORT ==================== */
+@media (display-mode: window-controls-overlay) {
+  /* Draggable titlebar area at the top of the PWA */
+  header, 
+  .pwa-header-spacer {
+    padding-top: env(titlebar-area-inset-top, 0px) !important;
+  }
+
+  /* Make header draggable so users can move the window */
+  header {
+    app-region: drag;
+    -webkit-app-region: drag;
+  }
+
+  /* Ensure interactive controls inside the header are clickable and NOT draggable */
+  header button,
+  header input,
+  header a,
+  header [role="button"] {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+  }
+
+  /* Padding adjustments to avoid overlap with native close/minimize/maximize buttons */
+  header {
+    left: calc(env(titlebar-area-inset-left, 0px) + 8px) !important;
+    right: calc(100% - env(titlebar-area-inset-right, 100%) + 8px) !important;
+    width: auto !important;
+  }
+}
+
+/* Base safe-area support for iOS notch/status bar and overlays */
+header {
+  padding-top: max(0.375rem, env(safe-area-inset-top, 0px));
+}
+

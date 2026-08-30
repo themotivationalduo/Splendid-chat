@@ -5,10 +5,11 @@
   "description": "A modern messaging app with Firebase phone & passcode authentication, mirror glass aesthetics, real-time push notifications, voice notes, and media attachments.",
   "start_url": "https://splendidchat.vercel.app",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "display_override": [
-    "fullscreen",
-    "window-controls-overlay"
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
   ],
   "orientation": "any",
   "background_color": "#121418",
@@ -18,6 +19,38 @@
     "messaging",
     "productivity"
   ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "share_title",
+      "text": "share_text",
+      "url": "share_url"
+    }
+  },
+  "widgets": [
+    {
+      "name": "Unread Messages",
+      "short_name": "Unread",
+      "description": "Keep track of unread direct messages in real-time.",
+      "tag": "unread-chats",
+      "template": "unread_widget",
+      "ms_ac_template": "/widgets/unread.json",
+      "data": "/widgets/unread-data.json",
+      "type": "application/json",
+      "screenshots": [
+        {
+          "src": "/icon.svg",
+          "sizes": "512x512",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ],
+  "edge_side_panel": {
+    "preferred_width": 480
+  },
   "prefer_related_applications": false,
   "icons": [
     {

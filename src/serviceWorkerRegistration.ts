@@ -7,8 +7,36 @@ export function registerServiceWorker() {
 
       navigator.serviceWorker
         .register(swUrl)
-        .then((registration) => {
+        .then(async (registration) => {
           console.log('ServiceWorker registered successfully with scope:', registration.scope);
+
+          // 1. Register Background Sync for outbox synchronization
+          if ('sync' in registration) {
+            try {
+              // Register one-shot sync for outbound offline/network-resumed messages
+              await (registration as any).sync.register('sync-messages');
+              console.log('[ServiceWorker] Background Sync ("sync-messages") registered successfully!');
+            } catch (err) {
+              console.warn('[ServiceWorker] Background Sync registration failed:', err);
+            }
+          }
+
+          // 2. Register Periodic Sync for updating background chat caches (requires permission check)
+          if ('periodicSync' in registration) {
+            try {
+              const status = await (navigator.permissions as any).query({
+                name: 'periodic-background-sync'
+              });
+              if (status.state === 'granted') {
+                await (registration as any).periodicSync.register('update-chat-cache', {
+                  minInterval: 24 * 60 * 60 * 1000 // Refresh at most once per 24 hours
+                });
+                console.log('[ServiceWorker] Periodic Sync ("update-chat-cache") registered!');
+              }
+            } catch (err) {
+              console.warn('[ServiceWorker] Periodic Sync registration failed or not allowed:', err);
+            }
+          }
 
           registration.onupdatefound = () => {
             const installingWorker = registration.installing;

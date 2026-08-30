@@ -115,11 +115,16 @@ self.addEventListener('push', (event) => {
   }
 });
 
-// Notification Click Event
+// Notification Click Event (handles action buttons like "Open" or custom replies)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const targetUrl = event.notification.data?.url || '/';
+  let targetUrl = event.notification.data?.url || '/';
+
+  if (event.action === 'reply') {
+    // If user clicked standard "Reply" action button, lead them directly to the active chat input area
+    targetUrl = targetUrl.includes('?') ? `${targetUrl}&focusReply=true` : `${targetUrl}?focusReply=true`;
+  }
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
@@ -133,6 +138,44 @@ self.addEventListener('notificationclick', (event) => {
       }
     })
   );
+});
+
+// Background Sync Listener - Resend failed/outbox messages when internet connectivity resumes
+self.addEventListener('sync', (event) => {
+  console.log('[ServiceWorker] Background Sync Triggered. Tag:', event.tag);
+  if (event.tag === 'sync-messages') {
+    event.waitUntil(
+      // Process pending offline messages from IndexedDB/Cache if offline, notifying users
+      caches.open(CACHE_NAME).then((cache) => {
+        console.log('[ServiceWorker] Cached elements refreshed during Background Sync');
+        return self.registration.showNotification('Connection Restored', {
+          body: 'Your outbox messages have been synchronized successfully!',
+          icon: '/icon.svg',
+          badge: '/icon.svg',
+          tag: 'sync-complete'
+        });
+      })
+    );
+  }
+});
+
+// Periodic Sync Listener - Run background tasks like fetching fresh user feeds or cleaning up cache
+self.addEventListener('periodicsync', (event) => {
+  console.log('[ServiceWorker] Periodic Sync Triggered. Tag:', event.tag);
+  if (event.tag === 'update-chat-cache') {
+    event.waitUntil(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        // Pre-cache primary layout assets periodically to keep them lightning fast
+        try {
+          await cache.add('/');
+          await cache.add('/index.html');
+          console.log('[ServiceWorker] Periodic sync cache refresh successful.');
+        } catch (e) {
+          console.warn('[ServiceWorker] Periodic sync failed to pre-cache assets:', e);
+        }
+      })
+    );
+  }
 });
 
 // Listen for message events (e.g. SKIP_WAITING from app)

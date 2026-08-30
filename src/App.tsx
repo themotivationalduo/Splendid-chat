@@ -45,7 +45,8 @@ import {
   subscribeToUsers,
   updateUserPresence,
   togglePinMessage,
-  autoCleanupExpiredMediaForUser
+  autoCleanupExpiredMediaForUser,
+  saveChatDraft
 } from './services/firestoreService';
 import { playGlassChimeSound, RecordingResult } from './services/audioService';
 
@@ -73,7 +74,20 @@ export default function App() {
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   
   // Navigation & UI State
-  const [activeTab, setActiveTab] = useState<TabType>('chats');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const path = window.location.pathname.toLowerCase();
+    if (path === '/users' || path === '/contacts' || path === '/people') return 'users';
+    if (path === '/calls' || path === '/call') return 'calls';
+    if (path === '/settings' || path === '/config' || path === '/profile') return 'settings';
+    
+    const params = new URLSearchParams(window.location.search);
+    const viewQuery = params.get('view')?.toLowerCase() || params.get('tab')?.toLowerCase() || window.location.hash.toLowerCase().replace('#', '');
+    if (viewQuery === 'users' || viewQuery === 'contacts') return 'users';
+    if (viewQuery === 'calls' || viewQuery === 'call') return 'calls';
+    if (viewQuery === 'settings' || viewQuery === 'profile') return 'settings';
+    
+    return 'chats';
+  });
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
@@ -86,7 +100,13 @@ export default function App() {
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [isStartNewChatOpen, setIsStartNewChatOpen] = useState(false);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(() => {
+    const path = window.location.pathname.toLowerCase();
+    if (path === '/profile') return true;
+    const params = new URLSearchParams(window.location.search);
+    const viewQuery = params.get('view')?.toLowerCase() || params.get('tab')?.toLowerCase() || window.location.hash.toLowerCase().replace('#', '');
+    return viewQuery === 'profile';
+  });
   const [selectedUserProfile, setSelectedUserProfile] = useState<User | null>(null);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(!currentUser);
@@ -97,6 +117,37 @@ export default function App() {
   const [activeCall, setActiveCall] = useState<{ chat: Chat; isVideo: boolean } | null>(null);
   const [inAppToast, setInAppToast] = useState<PushNotification | null>(null);
 
+  // Web Share Target & Native App Integration States
+  const [sharedContent, setSharedContent] = useState<string | null>(null);
+  const [showSharedToast, setShowSharedToast] = useState(false);
+
+  // Parse share target parameters on launch
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const title = params.get('share_title') || params.get('title');
+    const text = params.get('share_text') || params.get('text');
+    const url = params.get('share_url') || params.get('url');
+
+    if (title || text || url) {
+      let combined = '';
+      if (title) combined += `${title}\n`;
+      if (text) combined += `${text}\n`;
+      if (url) combined += url;
+
+      const trimmed = combined.trim();
+      if (trimmed) {
+        setSharedContent(trimmed);
+        setShowSharedToast(true);
+        playGlassChimeSound();
+        console.log('[Share Target] Shared content captured:', trimmed);
+      }
+      
+      // Clear share params from the browser address bar cleanly
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, []);
+
   // Sync current user session
   useEffect(() => {
     saveLocalUser(currentUser);
@@ -104,6 +155,114 @@ export default function App() {
       setIsAuthOpen(true);
     }
   }, [currentUser]);
+
+  // Synchronize state changes back to the browser's URL path (virtual routing)
+  useEffect(() => {
+    let targetPath = '/chat';
+    let targetSearch = '';
+
+    if (isProfileOpen) {
+      targetPath = '/profile';
+    } else if (selectedChat) {
+      targetPath = `/chat/${selectedChat.id}`;
+    } else {
+      if (activeTab === 'chats') targetPath = '/chat';
+      else if (activeTab === 'users') targetPath = '/users';
+      else if (activeTab === 'calls') targetPath = '/calls';
+      else if (activeTab === 'settings') targetPath = '/settings';
+    }
+
+    const currentPath = window.location.pathname;
+    const currentSearch = window.location.search;
+
+    if (currentPath !== targetPath || currentSearch !== targetSearch) {
+      window.history.pushState(
+        { tab: activeTab, profileOpen: isProfileOpen, chatId: selectedChat?.id || null },
+        '',
+        targetPath + targetSearch
+      );
+    }
+  }, [activeTab, isProfileOpen, selectedChat?.id]);
+
+  // Synchronize URL path back to state on browser back/forward (popstate)
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
+      const params = new URLSearchParams(window.location.search);
+      const viewQuery = params.get('view')?.toLowerCase() || params.get('tab')?.toLowerCase();
+      const hash = window.location.hash.toLowerCase().replace('#', '');
+      const idQuery = params.get('id') || params.get('chatid');
+
+      let targetTab: TabType = 'chats';
+      let targetProfileOpen = false;
+      let targetChatId: string | null = null;
+
+      if (path === '/chat' || path === '/chats') {
+        targetTab = 'chats';
+      } else if (path.startsWith('/chat/')) {
+        targetTab = 'chats';
+        const parts = window.location.pathname.split('/');
+        if (parts[2]) targetChatId = parts[2];
+      } else if (path === '/users' || path === '/contacts' || path === '/people') {
+        targetTab = 'users';
+      } else if (path === '/calls' || path === '/call') {
+        targetTab = 'calls';
+      } else if (path === '/settings' || path === '/config') {
+        targetTab = 'settings';
+      } else if (path === '/profile') {
+        targetTab = 'settings';
+        targetProfileOpen = true;
+      } else {
+        const view = viewQuery || hash;
+        if (view === 'chats' || view === 'chat') targetTab = 'chats';
+        else if (view === 'users' || view === 'contacts') targetTab = 'users';
+        else if (view === 'calls' || view === 'call') targetTab = 'calls';
+        else if (view === 'settings' || view === 'profile') {
+          targetTab = 'settings';
+          if (view === 'profile') targetProfileOpen = true;
+        }
+      }
+
+      if (idQuery) targetChatId = idQuery;
+
+      setActiveTab(targetTab);
+      setIsProfileOpen(targetProfileOpen);
+
+      if (targetChatId) {
+        const matchedChat = chats.find(c => c.id === targetChatId);
+        if (matchedChat) setSelectedChat(matchedChat);
+      } else {
+        setSelectedChat(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [chats]);
+
+  // Auto-select chat from URL path/query when chats are loaded
+  useEffect(() => {
+    if (chats.length === 0) return;
+    
+    const path = window.location.pathname;
+    const params = new URLSearchParams(window.location.search);
+    const idQuery = params.get('id') || params.get('chatid');
+    
+    let targetChatId: string | null = null;
+    if (path.startsWith('/chat/')) {
+      const parts = path.split('/');
+      if (parts[2]) targetChatId = parts[2];
+    } else if (idQuery) {
+      targetChatId = idQuery;
+    }
+
+    if (targetChatId) {
+      const matchedChat = chats.find(c => c.id === targetChatId);
+      if (matchedChat && (!selectedChat || selectedChat.id !== targetChatId)) {
+        setSelectedChat(matchedChat);
+      }
+    }
+  }, [chats, selectedChat?.id]);
 
   // Real-time Presence Management (Online / Offline / Heartbeat)
   useEffect(() => {
@@ -500,6 +659,55 @@ export default function App() {
               <span className="text-[10px] text-red-400 font-semibold uppercase">Alert</span>
             </div>
             <p className="text-xs text-slate-300 truncate">{inAppToast.body}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Web Share Target Shared Content Glass Banner */}
+      {showSharedToast && sharedContent && (
+        <div className="fixed top-4 inset-x-4 max-w-md mx-auto z-50 p-4 rounded-2xl mirror-glass border border-emerald-500/30 shadow-2xl animate-in slide-in-from-top duration-300 select-none">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center text-lg shadow-inner shrink-0">
+                📥
+              </div>
+              <div>
+                <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-400">Shared Content Received</h4>
+                <p className="text-xs text-slate-200 mt-1 line-clamp-2 italic font-medium">"{sharedContent}"</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowSharedToast(false)}
+              className="w-6 h-6 rounded-full bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center text-xs transition-all active:scale-95"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex items-center gap-2 mt-3.5 justify-end">
+            <button
+              onClick={() => {
+                setShowSharedToast(false);
+              }}
+              className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold transition-all"
+            >
+              Dismiss
+            </button>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(sharedContent);
+                if (selectedChat && currentUser) {
+                  // Pre-fill active chat room using cached draft
+                  saveChatDraft(selectedChat.id, currentUser.id, sharedContent);
+                  alert("Use Shared Content: Active chat draft updated successfully! Please re-open the chat or paste directly.");
+                } else {
+                  alert("Use Shared Content: Copied directly to your device clipboard! Select a chat and paste it.");
+                }
+                setShowSharedToast(false);
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-200 hover:text-white text-xs font-bold transition-all flex items-center gap-1 shadow-md"
+            >
+              <span>📋</span> Use Shared Content
+            </button>
           </div>
         </div>
       )}
