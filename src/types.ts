@@ -13,6 +13,8 @@ export interface User {
   wallpaper?: string;
   allowReshare?: boolean; // toggle in settings, defaults to true
   allowPhoneNumberVisibility?: boolean; // toggle in settings, defaults to true
+  statusPrivacy?: 'everyone' | 'contacts' | 'specific';
+  statusAllowedUsers?: string[];
   createdAt: number;
 }
 
@@ -57,6 +59,8 @@ export interface Message {
   senderAvatar?: string;
   content: string;
   timestamp: string; // formatted time e.g., '11:16'
+  statusPrivacy?: 'everyone' | 'contacts' | 'specific';
+  statusAllowedUsers?: string[];
   createdAt: number; // unix timestamp in ms
   expiresAt?: number; // expiration timestamp (e.g. 24h for images/voices)
   isExpired?: boolean;
@@ -101,6 +105,8 @@ export interface Chat {
   pinnedMessages?: { id: string; content: string; senderName: string; timestamp: string }[];
   participant: User;
   tags?: string[];
+  statusPrivacy?: 'everyone' | 'contacts' | 'specific';
+  statusAllowedUsers?: string[];
   createdAt: number;
   disappearingMode?: boolean; // 24h automatic deletion for all messages
   bubbleColor?: string; // HEX color for user messages
@@ -128,9 +134,11 @@ export interface PushNotification {
   body: string;
   timestamp: string;
   chatId?: string;
+  senderId?: string;
   isRead: boolean;
   type: 'message' | 'system' | 'call';
   avatar?: string;
+  createdAt?: number;
 }
 
 export type TabType = 'chats' | 'users' | 'updates' | 'calls' | 'settings';
@@ -144,6 +152,8 @@ export interface CallSession {
   receiverId: string;
   isVideo: boolean;
   status: 'ringing' | 'accepted' | 'declined' | 'ended';
+  statusPrivacy?: 'everyone' | 'contacts' | 'specific';
+  statusAllowedUsers?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -159,6 +169,10 @@ export interface UserStatus {
   duration?: number; // voice notes duration in seconds
   backgroundColor?: string; // background gradient index or class for text status
   allowReshare?: boolean; // toggle if status can be reshared by others
+  likes?: string[];
+  views?: string[];
+  statusPrivacy?: 'everyone' | 'contacts' | 'specific';
+  statusAllowedUsers?: string[];
   createdAt: number;
   expiresAt: number;
 }
@@ -171,6 +185,8 @@ export interface BroadcastFeed {
   creatorId: string;
   creatorName: string;
   creatorAvatar: string;
+  statusPrivacy?: 'everyone' | 'contacts' | 'specific';
+  statusAllowedUsers?: string[];
   createdAt: number;
   followers?: string[]; // userIds
 }
@@ -183,6 +199,8 @@ export interface BroadcastFeedPost {
   type: 'text' | 'image' | 'voice';
   content: string;
   duration?: number;
+  statusPrivacy?: 'everyone' | 'contacts' | 'specific';
+  statusAllowedUsers?: string[];
   createdAt: number;
   reactions?: { [userId: string]: string }; // userId -> emoji
 }
@@ -193,6 +211,8 @@ export interface CallSignal {
   senderId: string;
   type: 'offer' | 'answer' | 'ice-candidate';
   payload: any;
+  statusPrivacy?: 'everyone' | 'contacts' | 'specific';
+  statusAllowedUsers?: string[];
   createdAt: number;
 }
 

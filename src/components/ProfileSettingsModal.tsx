@@ -9,6 +9,7 @@ interface ProfileSettingsModalProps {
   onUpdateUser: (updated: Partial<UserType>) => void;
   onLogout: () => void;
   theme: 'dark' | 'light';
+  allUsers?: UserType[];
   onToggleTheme: () => void;
 }
 
@@ -28,6 +29,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   onUpdateUser,
   onLogout,
   theme,
+  allUsers,
   onToggleTheme
 }) => {
   const [fullName, setFullName] = useState(currentUser.fullName || currentUser.username);
@@ -39,6 +41,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [selectedWallpaper, setSelectedWallpaper] = useState(currentUser.wallpaper || 'midnight');
   const [allowReshare, setAllowReshare] = useState(currentUser.allowReshare !== false);
   const [allowPhoneNumberVisibility, setAllowPhoneNumberVisibility] = useState(currentUser.allowPhoneNumberVisibility !== false);
+  const [statusPrivacy, setStatusPrivacy] = useState(currentUser.statusPrivacy || 'everyone');
+  const [statusAllowedUsers, setStatusAllowedUsers] = useState<string[]>(currentUser.statusAllowedUsers || []);
   const [activeAccordion, setActiveAccordion] = useState<string | null>('profile');
   const [isWallpaperDropdownOpen, setIsWallpaperDropdownOpen] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -117,7 +121,9 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
         avatar: selectedAvatar,
         wallpaper: selectedWallpaper,
         allowReshare: allowReshare,
-        allowPhoneNumberVisibility: allowPhoneNumberVisibility
+        allowPhoneNumberVisibility: allowPhoneNumberVisibility,
+        statusPrivacy: statusPrivacy,
+        statusAllowedUsers: statusAllowedUsers
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2000);
@@ -345,6 +351,55 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             
             {activeAccordion === 'privacy' && (
               <div className="p-4 border-t border-white/5 animate-in slide-in-from-top-1 duration-100 space-y-3">
+                <div className="flex flex-col bg-white/[0.02] p-3 rounded-xl border border-white/5 space-y-3">
+                  <div className="text-left">
+                    <h5 className="text-xs font-bold text-slate-200">Status Privacy</h5>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                      Control who can view your status updates.
+                    </p>
+                  </div>
+                  <select
+                    value={statusPrivacy}
+                    onChange={(e) => setStatusPrivacy(e.target.value as any)}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white outline-none focus:border-red-500"
+                  >
+                    <option value="everyone">Everyone</option>
+                    <option value="contacts">Contacts Only</option>
+                    <option value="specific">Specific Contacts</option>
+                  </select>
+                  
+                  {statusPrivacy === 'specific' && allUsers && (
+                    <div className="mt-2 space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                      <p className="text-[10px] text-slate-400">Select allowed users:</p>
+                      {allUsers.filter(u => u.id !== currentUser.id).map(user => {
+                        const isSelected = statusAllowedUsers.includes(user.id);
+                        return (
+                          <div 
+                            key={user.id} 
+                            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${isSelected ? 'bg-red-500/20 border-red-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}
+                            onClick={() => {
+                              if (isSelected) {
+                                setStatusAllowedUsers(prev => prev.filter(id => id !== user.id));
+                              } else {
+                                setStatusAllowedUsers(prev => [...prev, user.id]);
+                              }
+                            }}
+                          >
+                            <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-[10px]">
+                              {user.avatar || '👤'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-bold text-white truncate">{user.fullName}</p>
+                            </div>
+                            <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isSelected ? 'bg-red-500 border-red-500' : 'border-slate-500'}`}>
+                              {isSelected && <span className="text-[8px] text-white">✓</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center justify-between bg-white/[0.02] p-3 rounded-xl border border-white/5">
                   <div className="pr-2 text-left">
                     <h5 className="text-xs font-bold text-slate-200">Allow Status Reshare</h5>

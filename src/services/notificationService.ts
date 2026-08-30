@@ -37,12 +37,14 @@ export function triggerPushNotification(
   body: string,
   options: {
     chatId?: string;
+    senderId?: string;
     type?: 'message' | 'system' | 'call';
     avatar?: string;
     playSound?: boolean;
+    createdAt?: number;
   } = {}
 ) {
-  const { chatId, type = 'message', avatar, playSound = true } = options;
+  const { chatId, senderId, type = 'message', avatar, playSound = true, createdAt = Date.now() } = options;
 
   if (playSound) {
     playGlassChimeSound('incoming');
@@ -54,9 +56,11 @@ export function triggerPushNotification(
     body,
     timestamp: 'Just now',
     chatId,
+    senderId,
     isRead: false,
     type,
-    avatar
+    avatar,
+    createdAt
   };
 
   // 1. Notify in-app listener for mirror-glass toast banner

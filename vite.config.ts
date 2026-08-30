@@ -11,6 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        workbox: { maximumFileSizeToCacheInBytes: 5000000 },
         manifest: {
           name: 'SPLENDID CHAT',
           short_name: 'SplendidChat',

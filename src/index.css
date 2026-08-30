@@ -289,8 +289,8 @@ header {
   padding-top: max(0.375rem, env(safe-area-inset-top, 0px));
 }
 
-/* ==================== LIGHTNING FAST OPTIMIZATIONS ==================== */
-/* 1. Eliminate mobile tap delays instantly */
+/* ==================== LIGHTNING FAST & LIGHTWEIGHT OPTIMIZATIONS ==================== */
+/* 1. Eliminate tap delays & remove blue tap overlay */
 button, 
 a, 
 input, 
@@ -298,25 +298,29 @@ select,
 textarea, 
 [role="button"] {
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* 2. Hardware acceleration rules for transitions & animations */
+/* 2. Fast interactive buttons */
+button:active,
+[role="button"]:active {
+  transform: scale(0.97);
+  transition-duration: 75ms;
+}
+
+/* 3. Smooth GPU acceleration on glass surfaces without compositor thrashing */
 .mirror-glass,
 .mirror-glass-card,
-.mirror-glass-nav,
-main,
-nav,
-div {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+.mirror-glass-nav {
+  transform: translateZ(0);
 }
 
-/* 3. Virtualization layout rendering optimize for long lists */
-.custom-scrollbar,
-.overflow-y-auto {
-  content-visibility: auto;
-  contain-intrinsic-size: 100px;
-  will-change: scroll-position;
+/* 4. Hardware acceleration for main chat list and status viewer components */
+.chat-list-container,
+.status-viewer-modal,
+.will-change-transform {
+  will-change: transform;
 }
+
 
 

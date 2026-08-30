@@ -17,6 +17,7 @@ import { CallsTabView } from './components/CallsTabView';
 import { ActiveCallModal } from './components/ActiveCallModal';
 import { StartNewChatModal } from './components/StartNewChatModal';
 import { CreateGroupModal } from './components/CreateGroupModal';
+import { GroupSettingsModal } from './components/GroupSettingsModal';
 import { ForwardMessageModal } from './components/ForwardMessageModal';
 import { UpdatesTabView } from './components/UpdatesTabView';
 import { StatusViewer } from './components/StatusViewer';
@@ -116,6 +117,7 @@ export default function App() {
     return viewQuery === 'profile';
   });
   const [selectedUserProfile, setSelectedUserProfile] = useState<User | null>(null);
+  const [activeGroupProfile, setActiveGroupProfile] = useState<Chat | null>(null);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(!currentUser);
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false);
@@ -627,6 +629,10 @@ export default function App() {
   };
 
   // Open User Profile Modal (Phone & Username Display)
+  const handleOpenGroupProfile = (chat: Chat) => {
+    setActiveGroupProfile(chat);
+  };
+
   const handleOpenUserProfile = (user: User) => {
     setSelectedUserProfile(user);
     setIsUserProfileModalOpen(true);
@@ -969,6 +975,7 @@ export default function App() {
                 onTogglePin={handleTogglePin}
                 onOpenNewChat={() => setIsStartNewChatOpen(true)}
                 onOpenUserProfile={handleOpenUserProfile}
+                onOpenGroupProfile={handleOpenGroupProfile}
                 activeStatuses={activeStatuses}
                 onOpenStatusViewer={(userId, statuses) => {
                   setActiveStatusViewer({ userId, statuses });
@@ -1338,6 +1345,24 @@ export default function App() {
         />
       )}
 
+      
+      {activeGroupProfile && currentUser && (
+        <GroupSettingsModal
+          isOpen={!!activeGroupProfile}
+          onClose={() => setActiveGroupProfile(null)}
+          chat={activeGroupProfile}
+          currentUser={currentUser}
+          allUsers={allUsers}
+          onChatUpdated={() => {}}
+          onGroupExitedOrDeleted={() => {
+            setActiveGroupProfile(null);
+            if (selectedChat?.id === activeGroupProfile.id) {
+              setSelectedChat(null);
+            }
+          }}
+        />
+      )}
+
       {/* User Information Modal (Phone Number, Username, Status, Quick Actions) */}
       <UserProfileModal
         isOpen={isUserProfileModalOpen}
@@ -1421,7 +1446,6 @@ export default function App() {
         isOpen={isCreateGroupOpen}
         onClose={() => setIsCreateGroupOpen(false)}
         currentUser={currentUser || { id: '', fullName: '', username: '', phoneNumber: '', avatar: '👤', status: 'online', createdAt: Date.now() }}
-        allUsers={allUsers}
         onGroupCreated={(newChatId) => {
           const target = chats.find(c => c.id === newChatId);
           if (target) {
@@ -1435,6 +1459,7 @@ export default function App() {
           isOpen={isProfileOpen}
           onClose={() => setIsProfileOpen(false)}
           currentUser={currentUser}
+          allUsers={allUsers}
           onUpdateUser={async (updated) => {
             const neu = { ...currentUser, ...updated };
             setCurrentUser(neu);
@@ -1596,6 +1621,7 @@ export default function App() {
           userId={activeStatusViewer.userId}
           userStatuses={activeStatusViewer.statuses}
           currentUser={currentUser}
+          allUsers={allUsers}
           onClose={() => setActiveStatusViewer(null)}
           onReshareStatus={handleReshareStatus}
         />

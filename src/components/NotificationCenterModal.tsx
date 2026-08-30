@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { PushNotification } from '../types';
 import { requestPushPermission, triggerPushNotification } from '../services/notificationService';
 
@@ -9,6 +9,29 @@ interface NotificationCenterModalProps {
   onMarkAllRead: () => void;
   onClearAll: () => void;
   onSelectChat: (chatId: string) => void;
+}
+
+export interface AggregatedNotificationBatch {
+  id: string;
+  senderId?: string;
+  chatId?: string;
+  title: string;
+  avatar?: string;
+  type: 'message' | 'system' | 'call';
+  latestTimestamp: string;
+  latestCreatedAt: number;
+  earliestCreatedAt: number;
+  isRead: boolean;
+  count: number;
+  unreadCount: number;
+  messages: {
+    id: string;
+    body: string;
+    timestamp: string;
+    createdAt: number;
+    isRead: boolean;
+  }[];
+  notificationIds: string[];
 }
 
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({
@@ -22,6 +45,105 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   const [permissionStatus, setPermissionStatus] = useState<string>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
+  const [expandedBatchIds, setExpandedBatchIds] = useState<Record<string, boolean>>({});
+
+  // 30-second window batching mechanism
+  const batchedNotifications = useMemo(() => {
+    if (!notifications || notifications.length === 0) return [];
+
+    const WINDOW_MS = 30 * 1000; // 30 seconds
+
+    // Normalize and sort notifications from newest to oldest
+    const sorted = [...notifications]
+      .map(n => ({
+        ...n,
+        createdAt: n.createdAt || Date.now()
+      }))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    const batches: AggregatedNotificationBatch[] = [];
+
+    for (const notif of sorted) {
+      const senderKey = notif.senderId || notif.chatId || notif.title;
+
+      // Find an existing batch with the same senderKey and type that is within the 30-second window
+      const matchingBatch = batches.find(b => {
+        const bSenderKey = b.senderId || b.chatId || b.title;
+        if (bSenderKey !== senderKey || b.type !== notif.type) return false;
+
+        // Check if this notification is within 30s of the batch's time range
+        const timeDiffLatest = Math.abs(b.latestCreatedAt - notif.createdAt);
+        const timeDiffEarliest = Math.abs(b.earliestCreatedAt - notif.createdAt);
+
+        return timeDiffLatest <= WINDOW_MS || timeDiffEarliest <= WINDOW_MS;
+      });
+
+      if (matchingBatch) {
+        matchingBatch.count += 1;
+        if (!notif.isRead) {
+          matchingBatch.unreadCount += 1;
+          matchingBatch.isRead = false;
+        }
+        matchingBatch.notificationIds.push(notif.id);
+        matchingBatch.messages.push({
+          id: notif.id,
+          body: notif.body,
+          timestamp: notif.timestamp,
+          createdAt: notif.createdAt,
+          isRead: notif.isRead
+        });
+
+        // Update timestamps
+        if (notif.createdAt > matchingBatch.latestCreatedAt) {
+          matchingBatch.latestCreatedAt = notif.createdAt;
+          matchingBatch.latestTimestamp = notif.timestamp;
+        }
+        if (notif.createdAt < matchingBatch.earliestCreatedAt) {
+          matchingBatch.earliestCreatedAt = notif.createdAt;
+        }
+      } else {
+        batches.push({
+          id: notif.id,
+          senderId: notif.senderId,
+          chatId: notif.chatId,
+          title: notif.title,
+          avatar: notif.avatar,
+          type: notif.type,
+          latestTimestamp: notif.timestamp,
+          latestCreatedAt: notif.createdAt,
+          earliestCreatedAt: notif.createdAt,
+          isRead: notif.isRead,
+          count: 1,
+          unreadCount: notif.isRead ? 0 : 1,
+          messages: [{
+            id: notif.id,
+            body: notif.body,
+            timestamp: notif.timestamp,
+            createdAt: notif.createdAt,
+            isRead: notif.isRead
+          }],
+          notificationIds: [notif.id]
+        });
+      }
+    }
+
+    // Sort batches so newest activity is at the top
+    batches.sort((a, b) => b.latestCreatedAt - a.latestCreatedAt);
+
+    return batches;
+  }, [notifications]);
+
+  const totalUnreadCount = useMemo(() => {
+    return notifications.filter(n => !n.isRead).length;
+  }, [notifications]);
+
+  const toggleExpand = (batchId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedBatchIds(prev => ({
+      ...prev,
+      [batchId]: !prev[batchId]
+    }));
+  };
 
   if (!isOpen) return null;
 
@@ -38,29 +160,40 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/20 backdrop-blur-xl animate-in fade-in duration-75">
-      <div className="w-full max-w-md p-6 rounded-3xl mirror-glass-card border border-white/10 shadow-2xl space-y-4 max-h-[85vh] flex flex-col relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-75 select-none will-change-transform">
+      <div 
+        className="w-full max-w-md p-6 rounded-3xl mirror-glass-card border border-white/15 shadow-2xl space-y-4 max-h-[85vh] flex flex-col relative will-change-transform"
+        style={{ willChange: 'transform' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-3 select-none">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center text-xl shadow-inner">
+            <div className="w-10 h-10 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center text-xl shadow-inner">
               🔔
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <span>Push Notification Center</span>
-                <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-extrabold">
-                  {notifications.filter(n => !n.isRead).length} New
-                </span>
+                {totalUnreadCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-extrabold shadow-sm shadow-red-600/40">
+                    {totalUnreadCount} New
+                  </span>
+                )}
               </h3>
-              <p className="text-xs text-slate-400">Real-time alerts and events</p>
+              <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+                <span>Real-time alerts</span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20 font-medium">
+                  ⚡ 30s Batching Active
+                </span>
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-xl hover:bg-white/10 text-base"
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-all text-xs border border-white/10 active:scale-95"
+            title="Close"
           >
-            ❌
+            ✕
           </button>
         </div>
 
@@ -76,7 +209,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           {permissionStatus !== 'granted' ? (
             <button
               onClick={handleRequestPermission}
-              className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-md shadow-red-600/30"
+              className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-md shadow-red-600/30 active:scale-95"
             >
               Enable
             </button>
@@ -92,64 +225,138 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         <div className="flex items-center justify-between text-xs px-1">
           <button
             onClick={onMarkAllRead}
-            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200 transition-colors font-medium"
+            disabled={notifications.length === 0}
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors font-medium cursor-pointer"
           >
             <span>📭</span>
             <span>Mark all read</span>
           </button>
           <button
             onClick={onClearAll}
-            className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 transition-colors font-medium"
+            disabled={notifications.length === 0}
+            className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 disabled:opacity-40 transition-colors font-medium cursor-pointer"
           >
             <span>🗑️</span>
             <span>Clear list</span>
           </button>
         </div>
 
-        {/* Notifications List */}
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-[220px]">
-          {notifications.length === 0 ? (
+        {/* Notifications List (Aggregated by 30-second window) */}
+        <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 custom-scrollbar min-h-[220px]">
+          {batchedNotifications.length === 0 ? (
             <div className="text-center py-14 text-slate-400 space-y-2">
               <div className="text-3xl">🔕</div>
               <p className="text-xs font-semibold text-slate-200">No notifications yet</p>
               <p className="text-[11px] text-slate-500">You're all caught up!</p>
             </div>
           ) : (
-            notifications.map((notif) => (
-              <div
-                key={notif.id}
-                onClick={() => {
-                  if (notif.chatId) {
-                    onSelectChat(notif.chatId);
-                    onClose();
-                  }
-                }}
-                className={`p-3.5 rounded-2xl border transition-all cursor-pointer select-none ${
-                  !notif.isRead
-                    ? 'mirror-glass-input border-red-500/30 text-white'
-                    : 'mirror-glass-input border-white/5 text-slate-300 hover:bg-white/5'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-2xl bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center text-sm font-bold shrink-0 mt-0.5 shadow-sm">
-                    {notif.avatar || '💬'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <span className="font-semibold text-xs text-slate-200 truncate">
-                        {notif.title}
-                      </span>
-                      <span className="text-[10px] text-slate-400 shrink-0">
-                        {notif.timestamp}
-                      </span>
+            batchedNotifications.map((batch) => {
+              const isExpanded = !!expandedBatchIds[batch.id];
+              const isMulti = batch.count > 1;
+
+              return (
+                <div
+                  key={batch.id}
+                  onClick={() => {
+                    if (batch.chatId) {
+                      onSelectChat(batch.chatId);
+                      onClose();
+                    }
+                  }}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer select-none relative group ${
+                    !batch.isRead
+                      ? 'mirror-glass-input border-red-500/40 text-white shadow-md shadow-red-500/10'
+                      : 'mirror-glass-input border-white/10 text-slate-300 hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Avatar with batch count pill */}
+                    <div className="relative shrink-0 mt-0.5">
+                      <div className="w-9 h-9 rounded-2xl bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center text-sm font-bold shadow-inner">
+                        {batch.avatar || (batch.type === 'call' ? '📞' : batch.type === 'system' ? '⚙️' : '💬')}
+                      </div>
+                      {isMulti && (
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-600 border border-[#090b0f] text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-lg">
+                          {batch.count}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                      {notif.body}
-                    </p>
+
+                    <div className="flex-1 min-w-0">
+                      {/* Sender / Title & Timestamp Header */}
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-bold text-xs text-slate-100 truncate">
+                            {batch.title}
+                          </span>
+                          {isMulti && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 shrink-0">
+                              {batch.count} messages
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                          {batch.latestTimestamp}
+                        </span>
+                      </div>
+
+                      {/* Content summary */}
+                      {isMulti ? (
+                        <div className="space-y-1.5">
+                          {/* Summary headline */}
+                          <p className="text-xs text-slate-300 line-clamp-1 leading-relaxed">
+                            <span className="text-slate-400 font-medium mr-1">Latest:</span>
+                            {batch.messages[0]?.body}
+                          </p>
+
+                          {/* Expandable messages list */}
+                          {isExpanded && (
+                            <div className="mt-2 pt-2 border-t border-white/10 space-y-1.5 animate-in slide-in-from-top-1 fade-in duration-75">
+                              {batch.messages.map((msg, idx) => (
+                                <div 
+                                  key={msg.id || idx}
+                                  className="text-[11px] p-1.5 rounded-xl bg-white/5 border border-white/5 flex items-start justify-between gap-2"
+                                >
+                                  <span className="text-slate-300 flex-1 leading-relaxed">
+                                    • {msg.body}
+                                  </span>
+                                  <span className="text-[9px] text-slate-500 font-mono shrink-0">
+                                    {msg.timestamp}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Expand/Collapse Trigger */}
+                          <div className="flex items-center justify-between pt-0.5">
+                            <button
+                              type="button"
+                              onClick={(e) => toggleExpand(batch.id, e)}
+                              className="text-[10px] text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 transition-colors"
+                            >
+                              <span>{isExpanded ? '▴ Hide details' : `▾ View all ${batch.count} messages (30s window)`}</span>
+                            </button>
+                            {!batch.isRead && (
+                              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                            {batch.messages[0]?.body}
+                          </p>
+                          {!batch.isRead && (
+                            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

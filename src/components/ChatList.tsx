@@ -9,6 +9,7 @@ interface ChatListProps {
   onTogglePin: (chatId: string) => void;
   onOpenNewChat: () => void;
   onOpenUserProfile?: (user: User) => void;
+  onOpenGroupProfile?: (chat: Chat) => void;
   activeStatuses?: UserStatus[];
   onOpenStatusViewer?: (userId: string, statuses: UserStatus[]) => void;
 }
@@ -21,6 +22,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   onTogglePin,
   onOpenNewChat,
   onOpenUserProfile,
+  onOpenGroupProfile,
   activeStatuses = [],
   onOpenStatusViewer
 }) => {
@@ -34,6 +36,10 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   const handleAvatarClick = (e: React.MouseEvent, chat: Chat) => {
     e.stopPropagation();
+    if (chat.isGroup) {
+      if (onOpenGroupProfile) onOpenGroupProfile(chat);
+      return;
+    }
     if (onOpenUserProfile) {
       const targetUser: User = chat.participant || {
         id: chat.id,
@@ -75,7 +81,10 @@ export const ChatList: React.FC<ChatListProps> = ({
   }
 
   return (
-    <div className="w-full px-4 divide-y divide-white/5 max-w-md mx-auto pb-28 animate-in fade-in duration-75">
+    <div 
+      className="w-full px-4 divide-y divide-white/5 max-w-md mx-auto pb-28 animate-in fade-in duration-75 will-change-transform"
+      style={{ willChange: 'transform' }}
+    >
       {chats.map((chat) => {
         const isSelected = selectedChatId === chat.id;
         const isMenuOpen = activeMenuChatId === chat.id;
@@ -96,7 +105,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             {(() => {
               const participantId = chat.participant?.id || chat.id;
               const participantStatuses = activeStatuses.filter(s => s.userId === participantId);
-              const hasStatus = participantStatuses.length > 0;
+              const hasStatus = !chat.isGroup && participantStatuses.length > 0;
 
               return (
                 <div 
@@ -118,15 +127,17 @@ export const ChatList: React.FC<ChatListProps> = ({
                   }`}>
                     <span>{chat.avatar || '👤'}</span>
                   </div>
-                  <span
-                    className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#121418] ${
-                      chat.status === 'online'
-                        ? 'bg-emerald-500'
-                        : chat.status === 'away'
-                        ? 'bg-amber-400'
-                        : 'bg-slate-500'
-                    }`}
-                  />
+                  {!chat.isGroup && (
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#121418] ${
+                        chat.status === 'online'
+                          ? 'bg-emerald-500'
+                          : chat.status === 'away'
+                          ? 'bg-amber-400'
+                          : 'bg-slate-500'
+                      }`}
+                    />
+                  )}
                 </div>
               );
             })()}
@@ -212,7 +223,9 @@ export const ChatList: React.FC<ChatListProps> = ({
                   >
                     <button
                       onClick={() => {
-                        if (onOpenUserProfile) {
+                        if (chat.isGroup) {
+                          if (onOpenGroupProfile) onOpenGroupProfile(chat);
+                        } else if (onOpenUserProfile) {
                           onOpenUserProfile(chat.participant);
                         }
                         setActiveMenuChatId(null);
@@ -220,7 +233,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-slate-200 hover:bg-white/10 transition-colors text-left"
                     >
                       <span>ℹ️</span>
-                      <span>View Profile Info</span>
+                      <span>{chat.isGroup ? 'View Group Info' : 'View Profile Info'}</span>
                     </button>
 
                     <button

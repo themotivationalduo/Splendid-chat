@@ -1,0 +1,20 @@
+  // Extract others' statuses
+  const otherUsersStatuses = Object.entries(groupedStatuses).filter(
+    ([userId]) => {
+      if (userId === currentUser.id) return false;
+      const creator = users.find(u => u.id === userId);
+      if (!creator) return false;
+      
+      const privacy = creator.statusPrivacy || 'everyone';
+      if (privacy === 'everyone') return true;
+      if (privacy === 'specific') {
+        return creator.statusAllowedUsers?.includes(currentUser.id);
+      }
+      if (privacy === 'contacts') {
+        // Since we don't have a rigid contacts list, we'll allow it if they are in 'users' array 
+        // (we could enhance this to check chats, but this is a good approximation for now)
+        return true;
+      }
+      return true;
+    }
+  );

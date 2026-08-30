@@ -149,7 +149,17 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
   const myStatuses = groupedStatuses[currentUser.id] || [];
   // Extract others' statuses
   const otherUsersStatuses = Object.entries(groupedStatuses).filter(
-    ([userId]) => userId !== currentUser.id
+    ([userId]) => {
+      if (userId === currentUser.id) return false;
+      const creator = users.find(u => u.id === userId);
+      if (!creator) return false;
+      const privacy = creator.statusPrivacy || "everyone";
+      if (privacy === "everyone") return true;
+      if (privacy === "specific") {
+        return creator.statusAllowedUsers?.includes(currentUser.id);
+      }
+      return true;
+    }
   );
 
   // Create text status
@@ -691,7 +701,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                   <button
                     onClick={() => {
                       const audio = new Audio(voiceResult.audioUrl);
-                      audio.play();
+                      audio.play().catch(e => { if (e.name !== "AbortError") console.error("Audio playback error:", e); });
                     }}
                     className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-[10px] font-bold"
                   >
@@ -982,7 +992,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const audio = new Audio(post.content);
-                                audio.play().catch(err => console.error("Audio playback error:", err));
+                                audio.play().catch(err => { if (err.name !== "AbortError") console.error("Audio playback error:", err); });
                               }}
                               className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold shrink-0 transition-all"
                             >

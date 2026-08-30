@@ -520,7 +520,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
               <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-sm overflow-hidden shadow">
                 <span>{chat.avatar || '👤'}</span>
               </div>
-              {chat.status === 'online' && (
+              {!chat.isGroup && chat.status === 'online' && (
                 <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#0b141a]" />
               )}
             </div>
