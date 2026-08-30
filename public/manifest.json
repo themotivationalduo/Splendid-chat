@@ -3,14 +3,21 @@
   "name": "SPLENDID CHAT",
   "short_name": "SplendidChat",
   "description": "A modern messaging app with Firebase phone & passcode authentication, mirror glass aesthetics, real-time push notifications, voice notes, and media attachments.",
-  "start_url": "/",
+  "start_url": "https://splendidchat.vercel.app",
   "scope": "/",
-  "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
-  "orientation": "portrait",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "window-controls-overlay"
+  ],
+  "orientation": "any",
   "background_color": "#121418",
   "theme_color": "#dc2626",
-  "categories": ["social", "messaging", "productivity"],
+  "categories": [
+    "social",
+    "messaging",
+    "productivity"
+  ],
   "prefer_related_applications": false,
   "icons": [
     {
@@ -51,5 +58,6 @@
         }
       ]
     }
-  ]
+  ],
+  "lang": "en"
 }
