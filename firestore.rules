@@ -40,5 +40,20 @@ service cloud.firestore {
     match /calls/{callId} {
       allow read, write: if true;
     }
+
+    // Statuses Collection
+    match /statuses/{statusId} {
+      allow read, write: if true;
+    }
+
+    // Broadcast Feeds Collection
+    match /broadcast_feeds/{feedId} {
+      allow read, write: if true;
+    }
+
+    // Broadcast Feed Posts Collection
+    match /broadcast_feed_posts/{postId} {
+      allow read, write: if true;
+    }
   }
 }

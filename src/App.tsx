@@ -18,8 +18,10 @@ import { ActiveCallModal } from './components/ActiveCallModal';
 import { StartNewChatModal } from './components/StartNewChatModal';
 import { CreateGroupModal } from './components/CreateGroupModal';
 import { ForwardMessageModal } from './components/ForwardMessageModal';
+import { UpdatesTabView } from './components/UpdatesTabView';
+import { StatusViewer } from './components/StatusViewer';
 
-import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS, CallSession } from './types';
+import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS, CallSession, UserStatus } from './types';
 import {
   getLocalUser,
   saveLocalUser,
@@ -50,7 +52,9 @@ import {
   createCallSession,
   updateCallStatus,
   subscribeToIncomingCalls,
-  subscribeToCallSession
+  subscribeToCallSession,
+  subscribeToActiveStatuses,
+  postUserStatus
 } from './services/firestoreService';
 import { playGlassChimeSound, RecordingResult } from './services/audioService';
 
@@ -122,6 +126,10 @@ export default function App() {
   const [activeCallSession, setActiveCallSession] = useState<CallSession | null>(null);
   const [incomingCallSession, setIncomingCallSession] = useState<CallSession | null>(null);
   const [inAppToast, setInAppToast] = useState<PushNotification | null>(null);
+
+  // Statuses State
+  const [activeStatuses, setActiveStatuses] = useState<UserStatus[]>([]);
+  const [activeStatusViewer, setActiveStatusViewer] = useState<{ userId: string; statuses: UserStatus[] } | null>(null);
 
   // 600ms Splash Screen state
   const [showSplash, setShowSplash] = useState(true);
@@ -333,6 +341,42 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Real-time Firestore Active Statuses list
+  useEffect(() => {
+    const unsubscribe = subscribeToActiveStatuses((statuses) => {
+      setActiveStatuses(statuses);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Handle active status reshare action
+  const handleReshareStatus = async (status: UserStatus) => {
+    if (!currentUser) return;
+    try {
+      const isReshareAllowed = currentUser.allowReshare !== false;
+      await postUserStatus(
+        currentUser,
+        status.type,
+        status.content,
+        status.duration,
+        status.backgroundColor,
+        isReshareAllowed
+      );
+      playGlassChimeSound();
+      setInAppToast({
+        id: `toast_${Date.now()}`,
+        title: 'Status Reshared! 🔄',
+        body: `You reshared ${status.userFullName}'s status update.`,
+        timestamp: 'Just now',
+        isRead: false,
+        type: 'system'
+      });
+      setActiveStatusViewer(null);
+    } catch (err) {
+      console.error('Error resharing status:', err);
+    }
+  };
 
   // Real-time Firestore subscription for User Chats
   useEffect(() => {
@@ -922,6 +966,10 @@ export default function App() {
                 onTogglePin={handleTogglePin}
                 onOpenNewChat={() => setIsStartNewChatOpen(true)}
                 onOpenUserProfile={handleOpenUserProfile}
+                activeStatuses={activeStatuses}
+                onOpenStatusViewer={(userId, statuses) => {
+                  setActiveStatusViewer({ userId, statuses });
+                }}
               />
             )}
 
@@ -1017,14 +1065,34 @@ export default function App() {
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="relative w-11 h-11 rounded-2xl mirror-glass-input border border-white/10 flex items-center justify-center font-bold text-lg text-white shrink-0 shadow-sm">
-                              {user.avatar || '👤'}
-                              <span
-                                className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121418] ${
-                                  user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
-                                }`}
-                              />
-                            </div>
+                            {(() => {
+                              const userStatuses = activeStatuses.filter(s => s.userId === user.id);
+                              const hasStatus = userStatuses.length > 0;
+
+                              return (
+                                <div 
+                                  onClick={(e) => {
+                                    if (hasStatus) {
+                                      e.stopPropagation();
+                                      setActiveStatusViewer({ userId: user.id, statuses: userStatuses });
+                                    }
+                                  }}
+                                  className={`relative w-11 h-11 rounded-2xl mirror-glass-input border flex items-center justify-center font-bold text-lg text-white shrink-0 shadow-sm ${
+                                    hasStatus 
+                                      ? 'ring-2 ring-red-500 ring-offset-2 ring-offset-[#121418] border-red-500/30' 
+                                      : 'border-white/10'
+                                  }`}
+                                  title={hasStatus ? "Click to view Status update" : "Contact avatar"}
+                                >
+                                  {user.avatar || '👤'}
+                                  <span
+                                    className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121418] ${
+                                      user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
+                                    }`}
+                                  />
+                                </div>
+                              );
+                            })()}
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <h4 className="text-sm font-bold text-slate-100 truncate">
@@ -1066,6 +1134,20 @@ export default function App() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Updates Tab */}
+          <div className={activeTab === 'updates' ? 'block w-full animate-in fade-in duration-75' : 'hidden'}>
+            {currentUser && (
+              <UpdatesTabView
+                currentUser={currentUser}
+                users={allUsers}
+                activeStatuses={activeStatuses}
+                onOpenStatusViewer={(userId, statuses) => {
+                  setActiveStatusViewer({ userId, statuses });
+                }}
+              />
+            )}
           </div>
 
           {/* Calls Tab */}
@@ -1504,6 +1586,17 @@ export default function App() {
           setActiveCallSession(null);
         }}
       />
+
+      {/* Active Status Viewer Overlay Modal */}
+      {activeStatusViewer && currentUser && (
+        <StatusViewer
+          userId={activeStatusViewer.userId}
+          userStatuses={activeStatusViewer.statuses}
+          currentUser={currentUser}
+          onClose={() => setActiveStatusViewer(null)}
+          onReshareStatus={handleReshareStatus}
+        />
+      )}
     </div>
   );
 }

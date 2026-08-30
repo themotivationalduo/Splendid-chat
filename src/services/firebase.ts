@@ -42,7 +42,7 @@ const dbId = (firebaseConfigJson as { firestoreDatabaseId?: string }).firestoreD
 
 try {
   const options = {
-    experimentalAutoDetectLongPolling: true,
+    experimentalForceLongPolling: true,
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
   };
   firestoreInstance = dbId 
@@ -52,7 +52,7 @@ try {
   try {
     // Fallback to memory local cache if persistent IndexedDB cache is locked or unsupported
     const fallbackOptions = {
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
       localCache: memoryLocalCache()
     };
     firestoreInstance = dbId

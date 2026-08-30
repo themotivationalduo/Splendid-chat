@@ -11,6 +11,7 @@ export interface User {
   bio?: string;
   role?: string;
   wallpaper?: string;
+  allowReshare?: boolean; // toggle in settings, defaults to true
   createdAt: number;
 }
 
@@ -25,6 +26,17 @@ export const WALLPAPER_OPTIONS = [
   { id: 'starry', name: 'Starry Emoji ✨', class: 'bg-gradient-to-br from-[#172554] via-[#1e1b4b] to-[#020617]', pattern: '✨ 🌟 💫 🚀 ⭐' },
   { id: 'hearts', name: 'Romantic Hearts ❤️', class: 'bg-gradient-to-br from-[#4c0519] via-[#831843] to-[#1e1b4b]', pattern: '❤️ 💖 💘 💞 💓' },
   { id: 'nature', name: 'Zen Forest 🍃', class: 'bg-gradient-to-br from-[#14532d] via-[#064e3b] to-[#0f172a]', pattern: '🍃 🌿 🍀 🌱 🌲' },
+];
+
+export const STATUS_BACKGROUND_OPTIONS = [
+  { id: 'indigo', name: 'Deep Indigo 🌌', class: 'from-[#312e81] via-[#1e1b4b] to-[#020617]' },
+  { id: 'purple', name: 'Neon Purple 🔮', class: 'from-[#581c87] via-[#3b0764] to-[#090514]' },
+  { id: 'rose', name: 'Dark Rose 🌹', class: 'from-[#881337] via-[#4c0519] to-[#0d0205]' },
+  { id: 'emerald', name: 'Forest Teal 🌲', class: 'from-[#065f46] via-[#022c22] to-[#01140e]' },
+  { id: 'blue', name: 'Ocean Blue 🌊', class: 'from-[#1e3a8a] via-[#172554] to-[#030712]' },
+  { id: 'orange', name: 'Rust Sunset 🌅', class: 'from-[#7c2d12] via-[#431407] to-[#0c0301]' },
+  { id: 'violet', name: 'Royal Violet 👾', class: 'from-[#6d28d9] via-[#4c1d95] to-[#1e1b4b]' },
+  { id: 'crimson', name: 'Warm Pink 💝', class: 'from-[#be185d] via-[#881337] to-[#500724]' },
 ];
 
 export interface MediaMeta {
@@ -116,7 +128,7 @@ export interface PushNotification {
   avatar?: string;
 }
 
-export type TabType = 'chats' | 'users' | 'calls' | 'settings';
+export type TabType = 'chats' | 'users' | 'updates' | 'calls' | 'settings';
 export type FilterType = 'all' | 'unread' | 'read' | 'pinned' | 'groups';
 
 export interface CallSession {
@@ -130,4 +142,45 @@ export interface CallSession {
   createdAt: number;
   updatedAt: number;
 }
+
+export interface UserStatus {
+  id: string;
+  userId: string;
+  username: string;
+  userFullName: string;
+  userAvatar: string;
+  type: 'text' | 'image' | 'voice';
+  content: string; // text, base64 image or media, or audio url/base64
+  duration?: number; // voice notes duration in seconds
+  backgroundColor?: string; // background gradient index or class for text status
+  allowReshare?: boolean; // toggle if status can be reshared by others
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface BroadcastFeed {
+  id: string;
+  name: string;
+  avatar: string; // emoji
+  description: string;
+  creatorId: string;
+  creatorName: string;
+  creatorAvatar: string;
+  createdAt: number;
+  followers?: string[]; // userIds
+}
+
+export interface BroadcastFeedPost {
+  id: string;
+  feedId: string;
+  creatorId: string;
+  creatorName: string;
+  creatorAvatar: string;
+  type: 'text' | 'image' | 'voice';
+  content: string;
+  duration?: number;
+  createdAt: number;
+  reactions?: { [userId: string]: string }; // userId -> emoji
+}
+
 

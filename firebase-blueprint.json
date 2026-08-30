@@ -112,6 +112,57 @@
         "updatedAt": { "type": "number" }
       },
       "required": ["id", "callerId", "receiverId", "status", "createdAt"]
+    },
+    "statuses": {
+      "title": "Statuses",
+      "description": "User status posts that expire after 24 hours",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "userFullName": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "type": { "type": "string" },
+        "content": { "type": "string" },
+        "duration": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "expiresAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "type", "content", "createdAt", "expiresAt"]
+    },
+    "broadcast_feeds": {
+      "title": "Broadcast Feeds",
+      "description": "Feed channels created by users to broadcast updates to participants",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "avatar": { "type": "string" },
+        "description": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "creatorAvatar": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "avatar", "creatorId", "createdAt"]
+    },
+    "broadcast_feed_posts": {
+      "title": "Broadcast Feed Posts",
+      "description": "Individual update posts within a specific broadcast channel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "feedId": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "creatorAvatar": { "type": "string" },
+        "type": { "type": "string" },
+        "content": { "type": "string" },
+        "duration": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "feedId", "creatorId", "type", "content", "createdAt"]
     }
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Chat, User } from '../types';
+import { Chat, User, UserStatus } from '../types';
 
 interface ChatListProps {
   chats: Chat[];
@@ -9,6 +9,8 @@ interface ChatListProps {
   onTogglePin: (chatId: string) => void;
   onOpenNewChat: () => void;
   onOpenUserProfile?: (user: User) => void;
+  activeStatuses?: UserStatus[];
+  onOpenStatusViewer?: (userId: string, statuses: UserStatus[]) => void;
 }
 
 export const ChatList: React.FC<ChatListProps> = ({
@@ -18,7 +20,9 @@ export const ChatList: React.FC<ChatListProps> = ({
   onDeleteChat,
   onTogglePin,
   onOpenNewChat,
-  onOpenUserProfile
+  onOpenUserProfile,
+  activeStatuses = [],
+  onOpenStatusViewer
 }) => {
   const [activeMenuChatId, setActiveMenuChatId] = useState<string | null>(null);
 
@@ -88,24 +92,43 @@ export const ChatList: React.FC<ChatListProps> = ({
             }`}
           >
             {/* Clickable Avatar with Online indicator to inspect profile */}
-            <div 
-              className="relative shrink-0 cursor-pointer group/avatar"
-              onClick={(e) => handleAvatarClick(e, chat)}
-              title="Click to view user profile & phone number"
-            >
-              <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1e2330] to-[#121620] border border-white/10 group-hover/avatar:border-red-500/50 flex items-center justify-center text-xl shadow-md transition-all">
-                <span>{chat.avatar || '👤'}</span>
-              </div>
-              <span
-                className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#121418] ${
-                  chat.status === 'online'
-                    ? 'bg-emerald-500'
-                    : chat.status === 'away'
-                    ? 'bg-amber-400'
-                    : 'bg-slate-500'
-                }`}
-              />
-            </div>
+            {(() => {
+              const participantId = chat.participant?.id || chat.id;
+              const participantStatuses = activeStatuses.filter(s => s.userId === participantId);
+              const hasStatus = participantStatuses.length > 0;
+
+              return (
+                <div 
+                  className="relative shrink-0 cursor-pointer group/avatar"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (hasStatus && onOpenStatusViewer) {
+                      onOpenStatusViewer(participantId, participantStatuses);
+                    } else {
+                      handleAvatarClick(e, chat);
+                    }
+                  }}
+                  title={hasStatus ? "Click to view Status update" : "Click to view user profile & phone number"}
+                >
+                  <div className={`relative w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1e2330] to-[#121620] border flex items-center justify-center text-xl shadow-md transition-all ${
+                    hasStatus 
+                      ? 'ring-2 ring-red-500 ring-offset-2 ring-offset-[#121418] border-red-500/30' 
+                      : 'border-white/10 group-hover/avatar:border-red-500/50'
+                  }`}>
+                    <span>{chat.avatar || '👤'}</span>
+                  </div>
+                  <span
+                    className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#121418] ${
+                      chat.status === 'online'
+                        ? 'bg-emerald-500'
+                        : chat.status === 'away'
+                        ? 'bg-amber-400'
+                        : 'bg-slate-500'
+                    }`}
+                  />
+                </div>
+              );
+            })()}
 
             {/* Chat Details */}
             <div className="flex-1 min-w-0 pr-1">

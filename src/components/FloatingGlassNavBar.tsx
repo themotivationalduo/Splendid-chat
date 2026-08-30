@@ -50,6 +50,11 @@ export const FloatingGlassNavBar: React.FC<FloatingGlassNavBarProps> = ({
       emoji: '👥'
     },
     {
+      id: 'updates',
+      label: 'Updates',
+      emoji: '⏳'
+    },
+    {
       id: 'calls',
       label: 'Calls',
       emoji: '📞'
@@ -63,7 +68,7 @@ export const FloatingGlassNavBar: React.FC<FloatingGlassNavBarProps> = ({
 
   return (
     <nav
-      className={`fixed bottom-3 inset-x-0 z-40 w-auto max-w-[min(280px,92vw)] mx-auto px-2 transition-all duration-100 ease-out pointer-events-none pb-[env(safe-area-inset-bottom,0px)] ${
+      className={`fixed bottom-3 inset-x-0 z-40 w-auto max-w-[min(340px,94vw)] mx-auto px-2 transition-all duration-100 ease-out pointer-events-none pb-[env(safe-area-inset-bottom,0px)] ${
         isVisible ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'
       }`}
     >

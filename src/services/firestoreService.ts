@@ -12,7 +12,7 @@ import {
   orderBy, 
   onSnapshot 
 } from './firebase';
-import { User, Chat, Message, CallLog, PushNotification, CallSession } from '../types';
+import { User, Chat, Message, CallLog, PushNotification, CallSession, UserStatus, BroadcastFeed, BroadcastFeedPost } from '../types';
 
 export function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj) || obj instanceof Date) {
@@ -1140,6 +1140,67 @@ export function subscribeToCallSession(
   });
 }
 
+// ----------------- USER STATUS UPDATES SERVICE ----------------- //
+
+export async function postUserStatus(
+  user: User,
+  type: 'text' | 'image' | 'voice',
+  content: string,
+  duration?: number,
+  backgroundColor?: string,
+  allowReshare: boolean = true
+): Promise<void> {
+  const statusId = `status_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const statusRef = doc(db, 'statuses', statusId);
+
+  const statusDoc: any = {
+    id: statusId,
+    userId: user.id,
+    username: user.username,
+    userFullName: user.fullName || user.username,
+    userAvatar: user.avatar || '👤',
+    type,
+    content,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours duration
+    allowReshare: allowReshare // embed allowReshare property
+  };
+
+  if (duration !== undefined) {
+    statusDoc.duration = duration;
+  }
+  if (backgroundColor !== undefined) {
+    statusDoc.backgroundColor = backgroundColor;
+  }
+
+  await setDoc(statusRef, statusDoc);
+}
+
+export function subscribeToActiveStatuses(
+  callback: (statuses: UserStatus[]) => void
+): () => void {
+  const statusesRef = collection(db, 'statuses');
+  // Query statuses created in the last 24 hours
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const q = query(statusesRef, where('createdAt', '>', oneDayAgo));
+
+  return onSnapshot(q, (snapshot) => {
+    const list: UserStatus[] = [];
+    const now = Date.now();
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data() as UserStatus;
+      if (data.expiresAt > now) {
+        list.push(data);
+      }
+    });
+    // Sort chronologically
+    list.sort((a, b) => b.createdAt - a.createdAt);
+    callback(list);
+  }, (err) => {
+    console.warn('Statuses subscription error:', err);
+  });
+}
+
 
 export async function createGroupChat(
   currentUser: User,
@@ -1339,3 +1400,131 @@ export async function removeMemberFromGroup(chatId: string, memberId: string): P
     console.error('Error removing member:', e);
   }
 }
+
+// ----------------- BROADCAST FEEDS SERVICE ----------------- //
+
+export async function createBroadcastFeed(
+  user: User,
+  name: string,
+  avatar: string,
+  description: string
+): Promise<void> {
+  const feedId = `feed_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const feedRef = doc(db, 'broadcast_feeds', feedId);
+
+  const feedDoc: BroadcastFeed = {
+    id: feedId,
+    name: name.trim(),
+    avatar: avatar,
+    description: description.trim(),
+    creatorId: user.id,
+    creatorName: user.fullName || user.username,
+    creatorAvatar: user.avatar || '👤',
+    createdAt: Date.now(),
+    followers: [user.id]
+  };
+
+  await setDoc(feedRef, feedDoc);
+}
+
+export async function postToBroadcastFeed(
+  user: User,
+  feedId: string,
+  type: 'text' | 'image' | 'voice',
+  content: string,
+  duration?: number
+): Promise<void> {
+  const postId = `feed_post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const postRef = doc(db, 'broadcast_feed_posts', postId);
+
+  const postDoc: BroadcastFeedPost = {
+    id: postId,
+    feedId,
+    creatorId: user.id,
+    creatorName: user.fullName || user.username,
+    creatorAvatar: user.avatar || '👤',
+    type,
+    content,
+    createdAt: Date.now()
+  };
+
+  if (duration !== undefined) {
+    postDoc.duration = duration;
+  }
+
+  await setDoc(postRef, postDoc);
+}
+
+export function subscribeToBroadcastFeeds(
+  callback: (feeds: BroadcastFeed[]) => void
+): () => void {
+  const feedsRef = collection(db, 'broadcast_feeds');
+  const q = query(feedsRef, orderBy('createdAt', 'desc'));
+
+  return onSnapshot(q, (snapshot) => {
+    const list: BroadcastFeed[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push(docSnap.data() as BroadcastFeed);
+    });
+    callback(list);
+  }, (err) => {
+    console.error('Error in subscribeToBroadcastFeeds:', err);
+  });
+}
+
+export function subscribeToFeedPosts(
+  feedId: string,
+  callback: (posts: BroadcastFeedPost[]) => void
+): () => void {
+  const postsRef = collection(db, 'broadcast_feed_posts');
+  const q = query(postsRef, where('feedId', '==', feedId), orderBy('createdAt', 'asc'));
+
+  return onSnapshot(q, (snapshot) => {
+    const list: BroadcastFeedPost[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push(docSnap.data() as BroadcastFeedPost);
+    });
+    callback(list);
+  }, (err) => {
+    console.error('Error in subscribeToFeedPosts:', err);
+  });
+}
+
+export async function followBroadcastFeed(feedId: string, userId: string): Promise<void> {
+  const feedRef = doc(db, 'broadcast_feeds', feedId);
+  await updateDoc(feedRef, {
+    followers: arrayUnion(userId)
+  });
+}
+
+export async function unfollowBroadcastFeed(feedId: string, userId: string): Promise<void> {
+  const feedRef = doc(db, 'broadcast_feeds', feedId);
+  await updateDoc(feedRef, {
+    followers: arrayRemove(userId)
+  });
+}
+
+export async function reactToBroadcastFeedPost(
+  postId: string,
+  userId: string,
+  emoji: string | null
+): Promise<void> {
+  const postRef = doc(db, 'broadcast_feed_posts', postId);
+  const postSnap = await getDoc(postRef);
+  if (!postSnap.exists()) return;
+  const post = postSnap.data() as BroadcastFeedPost;
+  const reactions = post.reactions || {};
+  if (emoji) {
+    reactions[userId] = emoji;
+  } else {
+    delete reactions[userId];
+  }
+  await updateDoc(postRef, { reactions });
+}
+
+export async function deleteBroadcastFeedPost(postId: string): Promise<void> {
+  const postRef = doc(db, 'broadcast_feed_posts', postId);
+  await deleteDoc(postRef);
+}
+
+
