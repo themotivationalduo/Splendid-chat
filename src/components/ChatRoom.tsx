@@ -11,7 +11,8 @@ import {
   subscribeToUsers, 
   updateFirestoreMessage,
   clearChatMessages,
-  toggleChatDisappearingMode
+  toggleChatDisappearingMode,
+  updateChatTheme
 } from '../services/firestoreService';
 import { GroupSettingsModal } from './GroupSettingsModal';
 import { MediaGalleryModal } from './MediaGalleryModal';
@@ -301,6 +302,23 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   const [isMediaGalleryOpen, setIsMediaGalleryOpen] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
+
+  const THEME_COLORS = [
+    { name: 'Classic Purple', bubble: '#701a75', accent: '#38bdf8' },
+    { name: 'Emerald', bubble: '#064e3b', accent: '#10b981' },
+    { name: 'Midnight', bubble: '#1e1b4b', accent: '#6366f1' },
+    { name: 'Crimson', bubble: '#4c0519', accent: '#f43f5e' },
+    { name: 'Amber', bubble: '#78350f', accent: '#f59e0b' },
+    { name: 'Teal', bubble: '#134e4a', accent: '#14b8a6' },
+    { name: 'Blue', bubble: '#1e3a8a', accent: '#3b82f6' },
+    { name: 'Indigo', bubble: '#312e81', accent: '#818cf8' },
+  ];
+
+  const handleUpdateTheme = async (bubble: string, accent: string) => {
+    await updateChatTheme(chat.id, bubble, accent);
+    playGlassChimeSound('sent');
+  };
 
   const handleClearChat = async () => {
     setShowClearConfirm(false);
@@ -517,7 +535,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           <div className="flex items-center">
             <button
               id="start-voice-call-btn"
-              onClick={() => alert('Voice Call feature is currently under maintenance.')}
+              onClick={() => onStartCall(chat, false)}
               className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base flex items-center gap-0.5"
               title="Start Voice Call"
             >
@@ -529,7 +547,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           {/* Video Call */}
           <button
             id="start-video-call-btn"
-            onClick={() => alert('Video Call feature is currently under maintenance.')}
+            onClick={() => onStartCall(chat, true)}
             className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base"
             title="Start Video Call"
           >
@@ -561,6 +579,15 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
             title="Clear All Messages"
           >
             <span>🗑️</span>
+          </button>
+
+          {/* Theme Picker Button */}
+          <button
+            onClick={() => setShowThemePicker(true)}
+            className="p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-full transition-colors text-base"
+            title="Customize Chat Theme"
+          >
+            <span>🎨</span>
           </button>
 
           {/* Options / Media Gallery (3-Dots Menu) */}
@@ -982,7 +1009,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
             <button
               type="button"
               id="chat-mic-btn"
-              onClick={() => alert('Voice note feature is currently under maintenance.')}
+              onClick={onOpenVoiceRecorder}
               className="w-9 h-9 rounded-full bg-[#701a75] hover:bg-[#86198f] text-white flex items-center justify-center text-base shadow-md shadow-purple-950/50 transition-all active:scale-95 shrink-0"
               title="Record Voice Note"
             >
@@ -1019,6 +1046,50 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                 Clear All
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Theme Picker Modal */}
+      {showThemePicker && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/20 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex flex-col items-center text-center space-y-2">
+              <div className="w-16 h-16 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center text-3xl shadow-inner mb-2">
+                🎨
+              </div>
+              <h3 className="text-xl font-bold text-white">Customize Chat Theme</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Select a bubble and accent color for this chat.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+              {THEME_COLORS.map((tc) => (
+                <button
+                  key={tc.name}
+                  onClick={() => handleUpdateTheme(tc.bubble, tc.accent)}
+                  className={`flex flex-col items-start gap-2 p-3 rounded-2xl border transition-all active:scale-95 ${
+                    chat.bubbleColor === tc.bubble 
+                      ? 'bg-white/15 border-white/40 ring-1 ring-white/20' 
+                      : 'bg-white/5 border-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: tc.bubble }} />
+                    <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: tc.accent }} />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-200">{tc.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowThemePicker(false)}
+              className="w-full py-3 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm shadow-lg shadow-purple-600/30 transition-all active:scale-95 mt-4"
+            >
+              Done
+            </button>
           </div>
         </div>
       )}

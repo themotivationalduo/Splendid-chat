@@ -103,6 +103,9 @@ export interface Chat {
   tags?: string[];
   createdAt: number;
   disappearingMode?: boolean; // 24h automatic deletion for all messages
+  bubbleColor?: string; // HEX color for user messages
+  accentColor?: string; // HEX color for play buttons, progress bars, etc.
+  description?: string; // Group description or user bio
 }
 
 export interface CallLog {

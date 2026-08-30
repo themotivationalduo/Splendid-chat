@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Chat, User } from '../types';
 import { 
   updateGroupName, 
+  updateGroupDescription,
   deleteGroupChat, 
   exitGroupChat,
   updateGroupAvatar,
@@ -33,6 +34,8 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [groupName, setGroupName] = useState(chat.name);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [groupDescription, setGroupDescription] = useState(chat.description || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
@@ -57,6 +60,23 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
       setIsEditingName(false);
     } catch (e) {
       console.error('Error updating group name:', e);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveDescription = async () => {
+    if (groupDescription.trim() === (chat.description || '')) {
+      setIsEditingDescription(false);
+      return;
+    }
+    setIsUpdating(true);
+    try {
+      await updateGroupDescription(chat.id, groupDescription.trim());
+      onChatUpdated();
+      setIsEditingDescription(false);
+    } catch (e) {
+      console.error('Error updating group description:', e);
     } finally {
       setIsUpdating(false);
     }
@@ -223,6 +243,52 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
             )}
           </div>
         )}
+
+        {/* Group Description Edit (Admin Only or View Only for Members) */}
+        <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
+            <span>Description</span>
+            {isAdmin && (
+              !isEditingDescription ? (
+                <button
+                  onClick={() => setIsEditingDescription(true)}
+                  className="text-red-400 hover:text-red-300 font-bold"
+                >
+                  Edit
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setGroupDescription(chat.description || ''); setIsEditingDescription(false); }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveDescription}
+                    disabled={isUpdating}
+                    className="text-red-400 font-bold hover:text-red-300"
+                  >
+                    Save
+                  </button>
+                </div>
+              )
+            )}
+          </div>
+
+          {isEditingDescription ? (
+            <textarea
+              value={groupDescription}
+              onChange={e => setGroupDescription(e.target.value)}
+              className="w-full min-h-[80px] p-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white focus:outline-none focus:border-red-500 resize-none"
+              placeholder="What's this group about?"
+            />
+          ) : (
+            <div className="text-xs text-slate-300 leading-relaxed italic">
+              {chat.description || 'No description provided.'}
+            </div>
+          )}
+        </div>
 
         {/* Participants List */}
         <div className="space-y-2">

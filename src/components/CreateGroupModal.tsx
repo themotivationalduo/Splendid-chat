@@ -20,6 +20,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   onGroupCreated
 }) => {
   const [groupName, setGroupName] = useState('');
+  const [groupDescription, setGroupDescription] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👥');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -41,7 +42,13 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     setIsCreating(true);
     try {
       const selectedMembers = otherUsers.filter(u => selectedUserIds.includes(u.id));
-      const newChat = await createGroupChat(currentUser, groupName.trim(), selectedMembers, selectedAvatar);
+      const newChat = await createGroupChat(
+        currentUser, 
+        groupName.trim(), 
+        selectedMembers, 
+        selectedAvatar,
+        groupDescription.trim()
+      );
       onGroupCreated(newChat.id);
       onClose();
     } catch (e) {
@@ -102,6 +109,17 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               placeholder="e.g. Project Alpha, Weekend Squad"
               className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 transition-colors"
               required
+            />
+          </div>
+
+          {/* Group Description Input */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-300">Description (Optional)</label>
+            <textarea
+              value={groupDescription}
+              onChange={e => setGroupDescription(e.target.value)}
+              placeholder="What's this group about?"
+              className="w-full min-h-[80px] p-3.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 transition-colors resize-none"
             />
           </div>
 

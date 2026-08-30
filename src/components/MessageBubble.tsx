@@ -80,9 +80,11 @@ export const MessageBubble = React.memo(({
       
       <div className={`relative max-w-[85%] rounded-2xl p-2.5 shadow-sm ${
           isUser
-            ? 'bg-[#701a75] text-white rounded-tr-none'
+            ? 'text-white rounded-tr-none'
             : 'bg-[#202c33] text-[#e9edef] rounded-tl-none border border-white/5'
-        }`}>
+        }`}
+        style={isUser ? { backgroundColor: chat?.bubbleColor || '#701a75' } : {}}
+      >
         
         {/* Forwarded Header Banner */}
         {msg.isForwarded && (
@@ -177,7 +179,8 @@ export const MessageBubble = React.memo(({
             duration={msg.mediaMeta?.duration || 17}
             waveData={msg.mediaMeta?.waveData}
             isUserMessage={isUser}
-            senderAvatar={isUser ? currentUser.avatar : chat.avatar || '👤'}
+            senderAvatar={isUser ? currentUser.avatar : chat?.avatar || '👤'}
+            accentColor={chat?.accentColor}
           />
         ) : (
           <div className="flex items-center gap-2 p-3 bg-black/20 rounded-xl text-slate-500 text-xs border border-white/5">

@@ -92,14 +92,14 @@ export const CallsTabView: React.FC<CallsTabViewProps> = ({
 
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => alert('Voice Call feature is currently under maintenance.')}
+                    onClick={() => associatedChat && onStartCall(associatedChat, false)}
                     className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-emerald-400 hover:text-white transition-colors flex items-center justify-center text-base"
                     title="Audio Call"
                   >
                     <span>📞</span>
                   </button>
                   <button
-                    onClick={() => alert('Video Call feature is currently under maintenance.')}
+                    onClick={() => associatedChat && onStartCall(associatedChat, true)}
                     className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-white transition-colors flex items-center justify-center text-base"
                     title="Video Call"
                   >

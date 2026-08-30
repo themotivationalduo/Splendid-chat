@@ -6,6 +6,7 @@ interface AudioVoicePlayerProps {
   waveData?: number[];
   isUserMessage?: boolean;
   senderAvatar?: string;
+  accentColor?: string;
 }
 
 export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
@@ -13,7 +14,8 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
   duration = 17,
   waveData = [],
   isUserMessage = false,
-  senderAvatar = '👤'
+  senderAvatar = '👤',
+  accentColor
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -79,7 +81,7 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
         <div className="w-10 h-10 rounded-full bg-slate-800 border border-white/20 flex items-center justify-center text-lg overflow-hidden shadow">
           {senderAvatar}
         </div>
-        <div className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-[9px] font-bold shadow">
+        <div className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full text-slate-950 flex items-center justify-center text-[9px] font-bold shadow" style={{ backgroundColor: accentColor || '#06b6d4' }}>
           🎙
         </div>
       </div>
@@ -95,10 +97,13 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
       {/* Waveform & Progress Bar */}
       <div className="flex-1 flex flex-col justify-center gap-1">
         <div className="relative flex items-center gap-0.5 h-6">
-          {/* Blue progress dot indicator */}
+          {/* Dynamic progress dot indicator */}
           <div
-            className="absolute -top-1 w-3 h-3 rounded-full bg-cyan-400 border border-slate-900 z-10 shadow-sm transition-all duration-75"
-            style={{ left: `calc(${progressPercent}% - 6px)` }}
+            className="absolute -top-1 w-3 h-3 rounded-full border border-slate-900 z-10 shadow-sm transition-all duration-75"
+            style={{ 
+              left: `calc(${progressPercent}% - 6px)`,
+              backgroundColor: accentColor || '#22d3ee' // Default cyan-400
+            }}
           />
           {displayWaveData.map((barHeight, idx) => {
             const barProgress = (idx / displayWaveData.length) * 100;
@@ -110,7 +115,9 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
                 className="w-1 rounded-full transition-all duration-75"
                 style={{
                   height: `${Math.max(25, Math.min(100, barHeight))}%`,
-                  backgroundColor: isFilled ? '#38bdf8' : 'rgba(255, 255, 255, 0.3)'
+                  backgroundColor: isFilled 
+                    ? (accentColor || '#38bdf8') // Default sky-400
+                    : 'rgba(255, 255, 255, 0.3)'
                 }}
               />
             );

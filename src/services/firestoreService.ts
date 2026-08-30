@@ -356,6 +356,9 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
           createdAt: data.createdAt || Date.now(),
           participant: peer,
           disappearingMode: data.disappearingMode || false,
+          description: data.description || (data.isGroup ? '' : peer.bio) || '',
+          bubbleColor: data.bubbleColor,
+          accentColor: data.accentColor,
           lastMessage: {
             text: data.lastMessageText || 'No messages yet',
             timestamp: data.lastMessageTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
@@ -877,6 +880,18 @@ export async function toggleChatDisappearingMode(chatId: string, enabled: boolea
   }
 }
 
+export async function updateChatTheme(chatId: string, bubbleColor?: string, accentColor?: string): Promise<void> {
+  try {
+    const chatRef = doc(db, 'chats', chatId);
+    const updates: any = { updatedAt: Date.now() };
+    if (bubbleColor !== undefined) updates.bubbleColor = bubbleColor;
+    if (accentColor !== undefined) updates.accentColor = accentColor;
+    await updateDoc(chatRef, updates);
+  } catch (e) {
+    console.error('Error updating chat theme:', e);
+  }
+}
+
 // ----------------- BULK DELETE MEDIA, STICKERS, EMOJIS & GIFS ----------------- //
 
 export async function deleteAllChatMediaAndStickers(chatId: string): Promise<number> {
@@ -1313,7 +1328,8 @@ export async function createGroupChat(
   currentUser: User,
   groupName: string,
   selectedMembers: User[],
-  groupAvatar: string = '👥'
+  groupAvatar: string = '👥',
+  groupDescription: string = ''
 ): Promise<Chat> {
   const allParticipants = [currentUser, ...selectedMembers];
   const participantIds = allParticipants.map(p => p.id);
@@ -1332,6 +1348,7 @@ export async function createGroupChat(
     name: groupName,
     avatar: groupAvatar,
     avatarType: 'emoji',
+    description: groupDescription,
     isGroup: true,
     creatorId: currentUser.id,
     participantIds,
@@ -1382,6 +1399,15 @@ export async function updateGroupName(chatId: string, newName: string): Promise<
     await updateDoc(chatRef, { name: newName, updatedAt: Date.now() });
   } catch (e) {
     console.error('Error updating group name:', e);
+  }
+}
+
+export async function updateGroupDescription(chatId: string, newDescription: string): Promise<void> {
+  try {
+    const chatRef = doc(db, 'chats', chatId);
+    await updateDoc(chatRef, { description: newDescription, updatedAt: Date.now() });
+  } catch (e) {
+    console.error('Error updating group description:', e);
   }
 }
 
