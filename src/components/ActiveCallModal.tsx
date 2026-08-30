@@ -5,12 +5,14 @@ import { playGlassChimeSound } from '../services/audioService';
 interface ActiveCallModalProps {
   chat: Chat | null;
   isVideo: boolean;
+  status?: 'ringing' | 'accepted' | 'declined' | 'ended';
   onEndCall: () => void;
 }
 
 export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   chat,
   isVideo,
+  status = 'ringing',
   onEndCall
 }) => {
   const [duration, setDuration] = useState(0);
@@ -19,13 +21,13 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [isCameraOff, setIsCameraOff] = useState(false);
 
   useEffect(() => {
-    if (!chat) return;
+    if (!chat || status === 'ringing') return;
     setDuration(0);
     const interval = setInterval(() => {
       setDuration(d => d + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, [chat]);
+  }, [chat, status]);
 
   if (!chat) return null;
 
@@ -49,7 +51,9 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>{isVideo ? 'HD Video Call' : 'HD Voice Call'}</span>
           </span>
-          <p className="text-xs text-slate-400 font-mono pt-1">{formatTimer(duration)}</p>
+          <p className="text-xs text-slate-400 font-mono pt-1">
+            {status === 'ringing' ? 'Calling...' : formatTimer(duration)}
+          </p>
         </div>
 
         {/* Center Avatar & Info */}
@@ -66,7 +70,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
           <div className="space-y-1">
             <h3 className="text-xl font-extrabold text-white">{chat.name}</h3>
             <p className="text-xs text-slate-400">
-              {chat.participant?.phoneNumber || 'Connecting peer audio stream...'}
+              {status === 'ringing' ? 'Waiting for peer connection...' : (chat.participant?.phoneNumber || 'HD Audio stream established')}
             </p>
           </div>
         </div>

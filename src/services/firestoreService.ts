@@ -12,7 +12,7 @@ import {
   orderBy, 
   onSnapshot 
 } from './firebase';
-import { User, Chat, Message, CallLog, PushNotification } from '../types';
+import { User, Chat, Message, CallLog, PushNotification, CallSession } from '../types';
 
 export function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj) || obj instanceof Date) {
@@ -1052,6 +1052,94 @@ export function subscribeToCallLogs(userId: string, callback: (calls: CallLog[])
     console.warn('Call logs subscription error:', err);
   });
 }
+
+// ----------------- REAL-TIME CALL SIGNALING CHANNEL ----------------- //
+
+export async function createCallSession(
+  caller: User,
+  receiverId: string,
+  isVideo: boolean
+): Promise<string> {
+  const callId = `call_sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const callRef = doc(db, 'calls', callId);
+
+  const callSession: CallSession = {
+    id: callId,
+    callerId: caller.id,
+    callerName: caller.fullName || caller.username || 'Splendid User',
+    callerAvatar: caller.avatar || '👤',
+    receiverId,
+    isVideo,
+    status: 'ringing',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  await setDoc(callRef, callSession);
+  return callId;
+}
+
+export async function updateCallStatus(
+  callId: string,
+  status: 'ringing' | 'accepted' | 'declined' | 'ended'
+): Promise<void> {
+  try {
+    const callRef = doc(db, 'calls', callId);
+    await updateDoc(callRef, {
+      status,
+      updatedAt: Date.now()
+    });
+  } catch (e) {
+    console.error('Error updating call status:', e);
+  }
+}
+
+export function subscribeToIncomingCalls(
+  userId: string,
+  callback: (call: CallSession | null) => void
+): () => void {
+  const callsRef = collection(db, 'calls');
+  const q = query(callsRef, where('receiverId', '==', userId));
+
+  return onSnapshot(q, (snapshot) => {
+    let latestRingingCall: CallSession | null = null;
+    const now = Date.now();
+
+    snapshot.forEach((docSnap) => {
+      const call = docSnap.data() as CallSession;
+      // Find a ringing call created within the last 60 seconds
+      if (
+        call.status === 'ringing' &&
+        now - (call.createdAt || 0) < 60000
+      ) {
+        if (!latestRingingCall || (call.createdAt || 0) > (latestRingingCall.createdAt || 0)) {
+          latestRingingCall = call;
+        }
+      }
+    });
+
+    callback(latestRingingCall);
+  }, (err) => {
+    console.warn('Incoming calls subscription error:', err);
+  });
+}
+
+export function subscribeToCallSession(
+  callId: string,
+  callback: (call: CallSession | null) => void
+): () => void {
+  const callRef = doc(db, 'calls', callId);
+  return onSnapshot(callRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data() as CallSession);
+    } else {
+      callback(null);
+    }
+  }, (err) => {
+    console.warn('Call session subscription error:', err);
+  });
+}
+
 
 export async function createGroupChat(
   currentUser: User,

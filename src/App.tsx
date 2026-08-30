@@ -19,7 +19,7 @@ import { StartNewChatModal } from './components/StartNewChatModal';
 import { CreateGroupModal } from './components/CreateGroupModal';
 import { ForwardMessageModal } from './components/ForwardMessageModal';
 
-import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS } from './types';
+import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS, CallSession } from './types';
 import {
   getLocalUser,
   saveLocalUser,
@@ -46,7 +46,11 @@ import {
   updateUserPresence,
   togglePinMessage,
   autoCleanupExpiredMediaForUser,
-  saveChatDraft
+  saveChatDraft,
+  createCallSession,
+  updateCallStatus,
+  subscribeToIncomingCalls,
+  subscribeToCallSession
 } from './services/firestoreService';
 import { playGlassChimeSound, RecordingResult } from './services/audioService';
 
@@ -115,6 +119,8 @@ export default function App() {
   const [messageToForward, setMessageToForward] = useState<Message | null>(null);
   const [activeLightboxImage, setActiveLightboxImage] = useState<{ url: string; caption?: string } | null>(null);
   const [activeCall, setActiveCall] = useState<{ chat: Chat; isVideo: boolean } | null>(null);
+  const [activeCallSession, setActiveCallSession] = useState<CallSession | null>(null);
+  const [incomingCallSession, setIncomingCallSession] = useState<CallSession | null>(null);
   const [inAppToast, setInAppToast] = useState<PushNotification | null>(null);
 
   // 600ms Splash Screen state
@@ -390,6 +396,42 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser?.id]);
 
+  // Real-time Incoming Call Signaling subscription
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubscribe = subscribeToIncomingCalls(currentUser.id, (call) => {
+      setIncomingCallSession(call);
+      if (call) {
+        // Play ringtone on incoming call
+        playGlassChimeSound('incoming');
+      }
+    });
+    return () => unsubscribe();
+  }, [currentUser?.id]);
+
+  // Real-time Active Call status listener (handles peer status changes)
+  useEffect(() => {
+    if (!activeCallSession?.id) return;
+
+    const unsubscribe = subscribeToCallSession(activeCallSession.id, (call) => {
+      if (!call) {
+        setActiveCall(null);
+        setActiveCallSession(null);
+        return;
+      }
+
+      if (call.status === 'declined' || call.status === 'ended') {
+        setActiveCall(null);
+        setActiveCallSession(null);
+        playGlassChimeSound('incoming');
+      } else if (call.status === 'accepted' && activeCallSession.status !== 'accepted') {
+        setActiveCallSession(call);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [activeCallSession?.id]);
+
   // Real-time Firestore Notifications listener
   useEffect(() => {
     if (!currentUser) return;
@@ -618,25 +660,46 @@ export default function App() {
   };
 
   const handleStartCall = async (chat: Chat, isVideo: boolean) => {
-    setActiveCall({ chat, isVideo });
     if (!currentUser) return;
     
-    // Add real call log to Firestore
-    const newLog: CallLog = {
-      id: `call_${Date.now()}`,
-      chatId: chat.id,
-      callerId: currentUser.id,
-      receiverId: chat.participant?.id || '',
-      name: chat.name,
-      avatar: chat.avatar,
-      type: 'outgoing',
-      timestamp: 'Just now',
-      duration: 'Ongoing',
-      isVideo,
-      createdAt: Date.now()
-    } as any;
+    try {
+      // Create Call Session document in Firestore for signaling
+      const callId = await createCallSession(currentUser, chat.participant?.id || '', isVideo);
+      
+      const sess: CallSession = {
+        id: callId,
+        callerId: currentUser.id,
+        callerName: currentUser.fullName || currentUser.username || 'User',
+        callerAvatar: currentUser.avatar,
+        receiverId: chat.participant?.id || '',
+        isVideo,
+        status: 'ringing',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      
+      setActiveCall({ chat, isVideo });
+      setActiveCallSession(sess);
 
-    await logCallRecord(newLog);
+      // Add real call log to Firestore
+      const newLog: CallLog = {
+        id: `call_${Date.now()}`,
+        chatId: chat.id,
+        callerId: currentUser.id,
+        receiverId: chat.participant?.id || '',
+        name: chat.name,
+        avatar: chat.avatar,
+        type: 'outgoing',
+        timestamp: 'Just now',
+        duration: 'Ongoing',
+        isVideo,
+        createdAt: Date.now()
+      } as any;
+
+      await logCallRecord(newLog);
+    } catch (err) {
+      console.error('Error starting call:', err);
+    }
   };
 
   const handleLogout = () => {
@@ -1323,10 +1386,123 @@ export default function App() {
         onClose={() => setActiveLightboxImage(null)}
       />
 
+      {/* Real-time Incoming Call Overlay (Mirror Glass Style) */}
+      {incomingCallSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-75">
+          <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/10 shadow-2xl flex flex-col items-center justify-between min-h-[360px] text-center select-none">
+            <div className="space-y-1">
+              <span className="px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/30 inline-flex items-center gap-1.5 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-red-400" />
+                <span>INCOMING {incomingCallSession.isVideo ? 'VIDEO' : 'AUDIO'} CALL</span>
+              </span>
+              <p className="text-xs text-slate-400 font-medium pt-1">Ringing...</p>
+            </div>
+
+            <div className="my-6 flex flex-col items-center space-y-4">
+              <div className="relative">
+                <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-red-500/40 flex items-center justify-center text-4xl shadow-2xl animate-bounce">
+                  {incomingCallSession.callerAvatar || '👤'}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-xl font-extrabold text-white">{incomingCallSession.callerName}</h3>
+                <p className="text-xs text-slate-400">Calling you in splendid HD...</p>
+              </div>
+            </div>
+
+            {/* Answer & Decline Controls */}
+            <div className="w-full flex items-center justify-center gap-4">
+              {/* Decline Button */}
+              <button
+                type="button"
+                onClick={async () => {
+                  await updateCallStatus(incomingCallSession.id, 'declined');
+                  setIncomingCallSession(null);
+                }}
+                className="flex-1 h-12 rounded-2xl bg-rose-600/25 border border-rose-500/40 hover:bg-rose-600 text-rose-300 hover:text-white font-bold text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <span>📵</span>
+                <span>Decline</span>
+              </button>
+
+              {/* Accept Button */}
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await updateCallStatus(incomingCallSession.id, 'accepted');
+                    
+                    // Create virtual chat or find existing chat
+                    const existingChat = chats.find(c => c.participant?.id === incomingCallSession.callerId);
+                    const virtualChat: Chat = existingChat || {
+                      id: `virtual_${incomingCallSession.callerId}`,
+                      name: incomingCallSession.callerName,
+                      avatar: incomingCallSession.callerAvatar,
+                      avatarType: 'emoji',
+                      status: 'online',
+                      unreadCount: 0,
+                      participant: {
+                        id: incomingCallSession.callerId,
+                        fullName: incomingCallSession.callerName,
+                        username: incomingCallSession.callerName.toLowerCase(),
+                        avatar: incomingCallSession.callerAvatar,
+                        phoneNumber: '',
+                        status: 'online',
+                        createdAt: Date.now()
+                      },
+                      lastMessage: { text: '', timestamp: '', senderId: '', isRead: true },
+                      createdAt: Date.now()
+                    };
+
+                    setActiveCall({
+                      chat: virtualChat,
+                      isVideo: incomingCallSession.isVideo
+                    });
+                    
+                    setActiveCallSession(incomingCallSession);
+                    setIncomingCallSession(null);
+
+                    // Add dynamic call log to incoming user's log as well
+                    const newLog: CallLog = {
+                      id: `call_${Date.now()}`,
+                      chatId: virtualChat.id,
+                      callerId: incomingCallSession.callerId,
+                      receiverId: currentUser.id,
+                      name: incomingCallSession.callerName,
+                      avatar: incomingCallSession.callerAvatar,
+                      type: 'incoming',
+                      timestamp: 'Just now',
+                      duration: 'Ongoing',
+                      isVideo: incomingCallSession.isVideo,
+                      createdAt: Date.now()
+                    } as any;
+                    await logCallRecord(newLog);
+
+                  } catch (err) {
+                    console.error('Error accepting call:', err);
+                  }
+                }}
+                className="flex-1 h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xl shadow-emerald-600/30 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <span>📞</span>
+                <span>Accept</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ActiveCallModal
         chat={activeCall?.chat || null}
         isVideo={activeCall?.isVideo || false}
-        onEndCall={() => setActiveCall(null)}
+        status={activeCallSession?.status || 'ringing'}
+        onEndCall={async () => {
+          if (activeCallSession) {
+            await updateCallStatus(activeCallSession.id, 'ended');
+          }
+          setActiveCall(null);
+          setActiveCallSession(null);
+        }}
       />
     </div>
   );

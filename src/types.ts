@@ -118,3 +118,16 @@ export interface PushNotification {
 
 export type TabType = 'chats' | 'users' | 'calls' | 'settings';
 export type FilterType = 'all' | 'unread' | 'read' | 'pinned' | 'groups';
+
+export interface CallSession {
+  id: string;
+  callerId: string;
+  callerName: string;
+  callerAvatar: string;
+  receiverId: string;
+  isVideo: boolean;
+  status: 'ringing' | 'accepted' | 'declined' | 'ended';
+  createdAt: number;
+  updatedAt: number;
+}
+

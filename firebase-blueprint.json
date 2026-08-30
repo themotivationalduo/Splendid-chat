@@ -95,6 +95,23 @@
         "status": { "type": "string" }
       },
       "required": ["id", "callerId", "receiverId", "type", "createdAt"]
+    },
+    "calls": {
+      "title": "Calls",
+      "description": "Real-time call signaling channel documents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "callerId": { "type": "string" },
+        "callerName": { "type": "string" },
+        "callerAvatar": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "isVideo": { "type": "boolean" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "callerId", "receiverId", "status", "createdAt"]
     }
   }
 }

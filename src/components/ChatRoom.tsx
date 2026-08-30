@@ -321,20 +321,84 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
     '😮', '💯', '🎯', '👑', '💎', '💡', '👀', '☕', '🌟', '🍀'
   ];
 
-  // Touch / swipe gesture handlers for reply by tap sliding
-  const touchStartXRef = useRef<number>(0);
+  // Enhanced Touch & Mouse drag sliding gesture states
+  const [swipingMsgId, setSwipingMsgId] = useState<string | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState<number>(0);
+  const dragStartXRef = useRef<number>(0);
+  const dragStartYRef = useRef<number>(0);
+  const isDraggingRef = useRef<boolean>(false);
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasTriggeredLongPress = useRef<boolean>(false);
 
-  const handleTouchStart = (e: React.TouchEvent, msg: Message) => {
-    touchStartXRef.current = e.touches[0].clientX;
+  const handleDragStart = (clientX: number, clientY: number, msg: Message) => {
+    // If user clicked or touched an interactive element like a button or link, ignore swipe
+    dragStartXRef.current = clientX;
+    dragStartYRef.current = clientY;
+    isDraggingRef.current = true;
+    setSwipingMsgId(msg.id);
+    setSwipeOffset(0);
+
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+    }
+    hasTriggeredLongPress.current = false;
+
+    // Trigger long press after 500ms of holding down
+    longPressTimeoutRef.current = setTimeout(() => {
+      hasTriggeredLongPress.current = true;
+      setActiveReactionMessageId(msg.id);
+      playGlassChimeSound('sent');
+    }, 500);
   };
 
-  const handleTouchEnd = (e: React.TouchEvent, msg: Message) => {
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = touchEndX - touchStartXRef.current;
-    if (diff > 70) {
-      // Swiped right -> trigger reply
-      setReplyingTo(msg);
+  const handleDragMove = (clientX: number, clientY: number) => {
+    if (!isDraggingRef.current || !swipingMsgId) return;
+
+    const diffX = clientX - dragStartXRef.current;
+    const diffY = clientY - dragStartYRef.current;
+
+    // If there is significant horizontal or vertical drift, abort the long press trigger
+    if (Math.abs(diffX) > 8 || Math.abs(diffY) > 8) {
+      if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+        longPressTimeoutRef.current = null;
+      }
     }
+
+    // Swiping right to trigger message reply
+    if (diffX > 0) {
+      // Apply elastic friction damping
+      const dampedOffset = Math.min(diffX * 0.7, 110);
+      setSwipeOffset(dampedOffset);
+    } else {
+      setSwipeOffset(0);
+    }
+  };
+
+  const handleDragEnd = (msg: Message) => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+
+    if (hasTriggeredLongPress.current) {
+      setSwipingMsgId(null);
+      setSwipeOffset(0);
+      hasTriggeredLongPress.current = false;
+      return;
+    }
+
+    // Trigger message reply if swiped far enough (65px)
+    if (swipeOffset > 65) {
+      setReplyingTo(msg);
+      playGlassChimeSound('sent');
+    }
+
+    setSwipingMsgId(null);
+    setSwipeOffset(0);
   };
 
   // Calculate peer or group name display
@@ -498,14 +562,33 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
               <div
                 key={msg.id}
                 id={`message-${msg.id}`}
-                onTouchStart={(e) => handleTouchStart(e, msg)}
-                onTouchEnd={(e) => handleTouchEnd(e, msg)}
-                className={`flex flex-col ${isUser ? 'items-end animate-in slide-in-from-right-4 fade-in' : 'items-start animate-in slide-in-from-left-4 fade-in'} group relative transition-all duration-75`}
+                onTouchStart={(e) => handleDragStart(e.touches[0].clientX, e.touches[0].clientY, msg)}
+                onTouchMove={(e) => handleDragMove(e.touches[0].clientX, e.touches[0].clientY)}
+                onTouchEnd={() => handleDragEnd(msg)}
+                onMouseDown={(e) => handleDragStart(e.clientX, e.clientY, msg)}
+                onMouseMove={(e) => handleDragMove(e.clientX, e.clientY)}
+                onMouseUp={() => handleDragEnd(msg)}
+                onMouseLeave={() => handleDragEnd(msg)}
+                className={`flex flex-col ${isUser ? 'items-end animate-in slide-in-from-right-4 fade-in' : 'items-start animate-in slide-in-from-left-4 fade-in'} group relative transition-all duration-75 select-none touch-none`}
               >
+                {/* Swipe-to-Reply Interactive Back-layer Indicator */}
+                {swipingMsgId === msg.id && swipeOffset > 5 && (
+                  <div
+                    className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 text-xs transition-all duration-75 pointer-events-none"
+                    style={{
+                      transform: `translateY(-50%) scale(${Math.min(swipeOffset / 55, 1.25)})`,
+                      opacity: Math.min(swipeOffset / 45, 1)
+                    }}
+                  >
+                    <span>↩️</span>
+                  </div>
+                )}
+
                 {/* Message Bubble Container with Quick Side Action */}
                 <div className="flex items-center gap-2 max-w-[85%] sm:max-w-[75%]">
                   {!isUser && (
                     <button
+                      type="button"
                       onClick={() => onOpenForward && onOpenForward(msg)}
                       className="w-7 h-7 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-opacity shadow"
                       title="Quick Forward"
@@ -514,12 +597,35 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                     </button>
                   )}
                   <div
-                    className={`relative w-full rounded-2xl p-3 shadow-md transition-all ${
+                    className={`relative w-full rounded-2xl p-3 shadow-md ${
                       isUser
                         ? 'bg-[#701a75] text-white rounded-tr-xs shadow-purple-950/40 border border-purple-500/20'
                         : 'bg-[#202c33] text-[#e9edef] rounded-tl-xs border border-white/10'
                     }`}
+                    style={swipingMsgId === msg.id ? { transform: `translateX(${swipeOffset}px)`, transition: 'none' } : { transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
                   >
+                    {/* Floating Emojis Reaction Bubble on Long Press */}
+                    {activeReactionMessageId === msg.id && (
+                      <div
+                        className={`absolute bottom-[105%] ${isUser ? 'right-0' : 'left-0'} z-50 flex items-center gap-1.5 p-2 rounded-2xl mirror-glass-nav border border-white/20 shadow-2xl animate-in zoom-in-95 duration-100 max-w-[280px] overflow-x-auto custom-scrollbar whitespace-nowrap`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {REACTION_EMOJIS.slice(0, 8).map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onToggleReaction) onToggleReaction(msg.id, emoji);
+                              setActiveReactionMessageId(null);
+                            }}
+                            className="w-8 h-8 rounded-xl hover:bg-white/10 hover:scale-125 transition-all flex items-center justify-center text-lg active:scale-90"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   {/* Forwarded Header Banner */}
                   {msg.isForwarded && (
                     <div className="flex items-center gap-1 text-[10px] text-red-300 font-semibold mb-1 opacity-90">
