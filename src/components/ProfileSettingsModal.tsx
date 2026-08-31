@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User as UserType, WALLPAPER_OPTIONS, APP_COLOR_OPTIONS } from '../types';
-import { checkUsernameAvailable } from '../services/firestoreService';
+import { checkUsernameAvailable, updateUserProfile, sendAdminNotification } from '../services/firestoreService';
 
 interface ProfileSettingsModalProps {
   isOpen: boolean;
@@ -40,6 +40,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar || '👤');
   const [selectedWallpaper, setSelectedWallpaper] = useState(currentUser.wallpaper || 'midnight');
   const [selectedAppColor, setSelectedAppColor] = useState(currentUser.appColor || 'ruby');
+  const [glassOpacity, setGlassOpacity] = useState(currentUser.glassOpacity ?? (theme === 'dark' ? 82 : 85));
   const [allowReshare, setAllowReshare] = useState(currentUser.allowReshare !== false);
   const [allowPhoneNumberVisibility, setAllowPhoneNumberVisibility] = useState(currentUser.allowPhoneNumberVisibility !== false);
   const [statusPrivacy, setStatusPrivacy] = useState(currentUser.statusPrivacy || 'everyone');
@@ -53,6 +54,9 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     available: true,
     message: null
   });
+
+  const isAdmin = currentUser.phoneNumber === '+2348082076038' || currentUser.username === 'Splenzzy' || currentUser.username === '@Splenzzy';
+  const [adminNotificationMessage, setAdminNotificationMessage] = useState('');
 
   useEffect(() => {
     // Sync with currentUser prop updates
@@ -122,6 +126,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
         avatar: selectedAvatar,
         wallpaper: selectedWallpaper,
         appColor: selectedAppColor,
+        glassOpacity: glassOpacity,
         allowReshare: allowReshare,
         allowPhoneNumberVisibility: allowPhoneNumberVisibility,
         statusPrivacy: statusPrivacy,
@@ -293,7 +298,10 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       <button
                         key={color.id}
                         type="button"
-                        onClick={() => setSelectedAppColor(color.id)}
+                        onClick={() => {
+                          setSelectedAppColor(color.id);
+                          onUpdateUser({ appColor: color.id });
+                        }}
                         className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer border relative ${
                           isSelected
                             ? 'bg-white/25 border-white ring-2 ring-red-500 scale-105 shadow-md'
@@ -321,7 +329,10 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       <button
                         key={color.id}
                         type="button"
-                        onClick={() => setSelectedAppColor(color.id)}
+                        onClick={() => {
+                          setSelectedAppColor(color.id);
+                          onUpdateUser({ appColor: color.id });
+                        }}
                         className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer border relative ${
                           isSelected
                             ? 'bg-white/20 border-cyan-400 ring-2 ring-cyan-400 scale-105 shadow-[0_0_12px_rgba(0,242,254,0.5)]'
@@ -339,6 +350,30 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                   })}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* SECTION: 🪞 MIRROR GLASS OPACITY */}
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">Mirror Glass Transparency</label>
+            <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
+              <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
+                <span>Transparent</span>
+                <span>{glassOpacity}%</span>
+                <span>Opaque</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={glassOpacity} 
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  setGlassOpacity(val);
+                  onUpdateUser({ glassOpacity: val });
+                }}
+                className="w-full accent-red-500 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer"
+              />
             </div>
           </div>
 
@@ -479,6 +514,83 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               </div>
             )}
           </div>
+
+          {isAdmin && (
+            <div className="rounded-2xl border border-rose-500/30 overflow-hidden bg-rose-500/5 mt-4">
+              <button
+                type="button"
+                onClick={() => setActiveAccordion(activeAccordion === 'admin' ? null : 'admin')}
+                className="w-full px-4 py-3 flex items-center justify-between text-left font-bold text-xs uppercase tracking-wider text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 transition-all select-none"
+              >
+                <span className="flex items-center gap-2">
+                  <span>🛡️</span> Admin Dashboard
+                </span>
+                <span>{activeAccordion === 'admin' ? '▲' : '▼'}</span>
+              </button>
+              
+              {activeAccordion === 'admin' && (
+                <div className="p-4 border-t border-rose-500/20 animate-in slide-in-from-top-1 duration-100 space-y-4">
+                  <div className="space-y-2 text-left">
+                    <label className="text-[10px] uppercase tracking-wider font-extrabold text-rose-300">Global Notification</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text"
+                        value={adminNotificationMessage}
+                        onChange={(e) => setAdminNotificationMessage(e.target.value)}
+                        placeholder="Type notification message..."
+                        className="flex-1 h-10 px-3 rounded-xl mirror-glass-input text-xs text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!adminNotificationMessage.trim() || !allUsers) return;
+                          for (const u of allUsers) {
+                            if (u.id !== currentUser.id) {
+                              await sendAdminNotification(u.id, "Admin Alert", adminNotificationMessage, currentUser.avatar || '🛡️');
+                            }
+                          }
+                          setAdminNotificationMessage('');
+                          alert('Sent to all users!');
+                        }}
+                        className="h-10 px-4 bg-rose-600 text-white rounded-xl text-xs font-bold"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-left mt-4">
+                    <label className="text-[10px] uppercase tracking-wider font-extrabold text-rose-300">User Management</label>
+                    <div className="max-h-48 overflow-y-auto space-y-2 custom-scrollbar">
+                      {allUsers?.filter(u => u.id !== currentUser.id).map(u => (
+                        <div key={u.id} className="flex items-center justify-between bg-white/5 p-2 rounded-xl border border-white/10">
+                          <div className="flex items-center gap-2">
+                            <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs">{u.avatar || '👤'}</span>
+                            <div className="text-left max-w-[100px]">
+                              <p className="text-[10px] font-bold text-white truncate">{u.fullName}</p>
+                              <p className="text-[9px] text-slate-400 truncate">@{u.username}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (window.confirm(`Reset passcode to 123456 for ${u.username}?`)) {
+                                await updateUserProfile(u.id, { passcode: '123456' });
+                                alert(`Reset passcode for ${u.username}`);
+                              }
+                            }}
+                            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-rose-300 rounded-lg text-[9px] font-bold border border-white/5 transition-colors"
+                          >
+                            Reset PIN
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Submit Save Button */}
           <button

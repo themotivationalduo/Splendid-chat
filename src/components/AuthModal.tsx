@@ -527,6 +527,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 />
               ))}
             </div>
+            
+            <div className="flex justify-end pt-1">
+              <a 
+                href="sms:+2348082076038?body=Hello%20Splenzzy%2C%20I%20have%20forgotten%20my%20passcode.%20Please%20help%20me%20reset%20it."
+                className="text-[10px] text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+              >
+                Forgot Passcode?
+              </a>
+            </div>
           </div>
 
           {/* Submit Button */}

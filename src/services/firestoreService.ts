@@ -664,6 +664,28 @@ export async function sendFirestoreMessage(
   return msgDocRef.id;
 }
 
+export async function sendAdminNotification(targetUserId: string, title: string, body: string, senderAvatar: string): Promise<void> {
+  try {
+    const notifDocRef = doc(collection(db, 'notifications'));
+    await setDoc(notifDocRef, cleanFirestoreData({
+      id: notifDocRef.id,
+      recipientId: targetUserId,
+      userId: targetUserId,
+      senderId: 'admin',
+      title,
+      body,
+      timestamp: 'Just now',
+      isRead: false,
+      type: 'system',
+      avatar: senderAvatar || '🔔',
+      createdAt: Date.now(),
+      isAdmin: true
+    }));
+  } catch (e) {
+    console.error('Failed to send admin notification', e);
+  }
+}
+
 // ----------------- FORWARD MESSAGE HELPER ----------------- //
 
 export async function forwardFirestoreMessage(
@@ -1025,7 +1047,8 @@ export function subscribeToUserNotifications(
           isRead: d.isRead || false,
           type: d.type || 'message',
           avatar: d.avatar || '💬',
-          createdAt: d.createdAt || Date.now()
+          createdAt: d.createdAt || Date.now(),
+          isAdmin: d.isAdmin || false
         });
       }
     });

@@ -599,7 +599,7 @@ export default function App() {
   }, [chats]);
 
   const unreadNotificationsCount = useMemo(() => {
-    return notifications.filter(n => !n.isRead).length;
+    return notifications.filter(n => !n.isRead && n.isAdmin).length;
   }, [notifications]);
 
   // Send real Firestore message (Text, Image, Voice, File)
@@ -851,7 +851,25 @@ export default function App() {
     document.documentElement.style.setProperty('--theme-primary', st.primaryHex);
     document.documentElement.style.setProperty('--theme-secondary', st.secondaryHex);
     document.documentElement.style.setProperty('--theme-glow', st.glow);
-  }, [currentUser?.appColor]);
+
+    // Default opacity ranges: dark ~0.82, light ~0.85
+    // glassOpacity is 0 to 100. Let's map it to an alpha modifier or absolute value.
+    // If not set, use null to fallback to CSS defaults.
+    if (currentUser?.glassOpacity !== undefined) {
+      // mapping 0-100 to 0.0 to 1.0
+      document.documentElement.style.setProperty('--glass-opacity', (currentUser.glassOpacity / 100).toString());
+    } else {
+      document.documentElement.style.removeProperty('--glass-opacity');
+    }
+
+    if (currentUser?.glassBlur !== undefined) {
+      // 0 to 40px
+      document.documentElement.style.setProperty('--glass-blur', `${currentUser.glassBlur}px`);
+    } else {
+      document.documentElement.style.removeProperty('--glass-blur');
+    }
+
+  }, [currentUser?.appColor, currentUser?.glassOpacity, currentUser?.glassBlur]);
 
   return (
     <div 
@@ -1600,7 +1618,7 @@ export default function App() {
       <NotificationCenterModal
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
-        notifications={notifications}
+        notifications={notifications.filter(n => n.isAdmin)}
         onMarkAllRead={async () => {
           if (currentUser) {
             await markAllUserNotificationsAsReadInFirestore(currentUser.id);

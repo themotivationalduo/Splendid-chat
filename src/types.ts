@@ -12,6 +12,8 @@ export interface User {
   role?: string;
   wallpaper?: string;
   appColor?: string; // 5 classic or 5 neon app colors
+  glassOpacity?: number; // 0 to 100
+  glassBlur?: number; // 0 to 20
   allowReshare?: boolean; // toggle in settings, defaults to true
   allowPhoneNumberVisibility?: boolean; // toggle in settings, defaults to true
   statusPrivacy?: 'everyone' | 'contacts' | 'specific';
@@ -294,6 +296,7 @@ export interface PushNotification {
   type: 'message' | 'system' | 'call';
   avatar?: string;
   createdAt?: number;
+  isAdmin?: boolean;
 }
 
 export type TabType = 'chats' | 'users' | 'groups' | 'updates' | 'calls' | 'settings';

@@ -125,6 +125,15 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Two red-outline action icons matching screenshot (💬 and ⚙️) */}
         <div className="flex items-center gap-2.5">
+          {/* Support Contact Button */}
+          <a
+            href="sms:+2348082076038"
+            className="w-9 h-9 rounded-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/40 text-rose-400 hover:text-rose-300 transition-all shadow-[0_0_12px_rgba(244,63,94,0.3)] active:scale-95 flex items-center justify-center text-base select-none"
+            title="Contact Support"
+          >
+            <span className="text-sm">🎧</span>
+          </a>
+
           {/* Messages / Notifications Button */}
           <button
             id="header-chat-btn"
