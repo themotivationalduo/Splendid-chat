@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Header } from './components/Header';
 import { SearchBar } from './components/SearchBar';
 import { UserManagementBar } from './components/UserManagementBar';
@@ -21,6 +21,7 @@ import { GroupSettingsModal } from './components/GroupSettingsModal';
 import { ForwardMessageModal } from './components/ForwardMessageModal';
 import { UpdatesTabView } from './components/UpdatesTabView';
 import { StatusViewer } from './components/StatusViewer';
+import { SuccessAnimationModal, SuccessAnimationType } from './components/SuccessAnimationModal';
 
 import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS, APP_COLOR_OPTIONS, CallSession, UserStatus, getThemeStyles } from './types';
 import {
@@ -64,8 +65,8 @@ import { requestPushPermission, triggerPushNotification } from './services/notif
 export default function App() {
   // Application State
   const [currentUser, setCurrentUser] = useState<User | null>(getLocalUser());
-  const lastMsgMapRef = React.useRef<Record<string, string>>({});
-  const isInitialChatLoadRef = React.useRef(true);
+  const lastMsgMapRef = useRef<Record<string, string>>({});
+  const isInitialChatLoadRef = useRef(true);
 
   // Request push notification permission on user login/mount
   useEffect(() => {
@@ -143,6 +144,28 @@ export default function App() {
   // Statuses State
   const [activeStatuses, setActiveStatuses] = useState<UserStatus[]>([]);
   const [activeStatusViewer, setActiveStatusViewer] = useState<{ userId: string; statuses: UserStatus[] } | null>(null);
+
+  // Success Animation Modal State
+  const [successModalState, setSuccessModalState] = useState<{
+    isOpen: boolean;
+    type: SuccessAnimationType;
+    title: string;
+    subtitle?: string;
+  }>({
+    isOpen: false,
+    type: 'generic',
+    title: '',
+    subtitle: undefined
+  });
+
+  const handleShowSuccessModal = (type: SuccessAnimationType, title: string, subtitle?: string) => {
+    setSuccessModalState({
+      isOpen: true,
+      type,
+      title,
+      subtitle
+    });
+  };
 
   // 600ms Splash Screen state
   const [showSplash, setShowSplash] = useState(true);
@@ -358,10 +381,14 @@ export default function App() {
   // Real-time Firestore Active Statuses list
   useEffect(() => {
     const unsubscribe = subscribeToActiveStatuses((statuses) => {
-      setActiveStatuses(statuses);
+      if (currentUser?.blockedUsers?.length) {
+        setActiveStatuses(statuses.filter(s => s.userId === currentUser.id || !currentUser.blockedUsers!.includes(s.userId)));
+      } else {
+        setActiveStatuses(statuses);
+      }
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser?.id, currentUser?.blockedUsers]);
 
   // Handle active status reshare action
   const handleReshareStatus = async (status: UserStatus) => {
@@ -377,14 +404,7 @@ export default function App() {
         isReshareAllowed
       );
       playGlassChimeSound();
-      setInAppToast({
-        id: `toast_${Date.now()}`,
-        title: 'Status Reshared! 🔄',
-        body: `You reshared ${status.userFullName}'s status update.`,
-        timestamp: 'Just now',
-        isRead: false,
-        type: 'system'
-      });
+      handleShowSuccessModal('status', 'Status Reshared! 🔄', `You reshared ${status.userFullName}'s status update.`);
       setActiveStatusViewer(null);
     } catch (err) {
       console.error('Error resharing status:', err);
@@ -397,8 +417,16 @@ export default function App() {
     setIsLoadingSkeleton(true);
 
     const unsubscribe = subscribeToUserChats(currentUser.id, currentUser.phoneNumber, (firestoreChats) => {
+      // Filter out chats with blocked users
+      const validChats = firestoreChats.filter(chat => {
+        if (!chat.isGroup && chat.participant?.id) {
+          return !currentUser.blockedUsers?.includes(chat.participant.id);
+        }
+        return true;
+      });
+
       if (!isInitialChatLoadRef.current) {
-        firestoreChats.forEach(chat => {
+        validChats.forEach(chat => {
           const lastMsg = chat.lastMessage;
           if (lastMsg && lastMsg.senderId && lastMsg.senderId !== currentUser.id) {
             const msgKey = `${chat.id}_${lastMsg.timestamp}_${lastMsg.text}`;
@@ -414,7 +442,7 @@ export default function App() {
           }
         });
       } else {
-        firestoreChats.forEach(chat => {
+        validChats.forEach(chat => {
           if (chat.lastMessage) {
             lastMsgMapRef.current[chat.id] = `${chat.id}_${chat.lastMessage.timestamp}_${chat.lastMessage.text}`;
           }
@@ -422,18 +450,22 @@ export default function App() {
         isInitialChatLoadRef.current = false;
       }
 
-      setChats(firestoreChats);
+      setChats(validChats);
       setIsLoadingSkeleton(false);
 
       // Keep selected chat in sync if updated
       setSelectedChat((prevSelected) => {
         if (!prevSelected) return null;
-        return firestoreChats.find(c => c.id === prevSelected.id) || prevSelected;
+        // If the chat was just filtered out due to blocking, deselect it
+        if (!validChats.find(c => c.id === prevSelected.id) && !prevSelected.isGroup && prevSelected.participant && currentUser.blockedUsers?.includes(prevSelected.participant.id)) {
+          return null;
+        }
+        return validChats.find(c => c.id === prevSelected.id) || prevSelected;
       });
     });
 
     return () => unsubscribe();
-  }, [currentUser?.id, currentUser?.phoneNumber]);
+  }, [currentUser?.id, currentUser?.phoneNumber, currentUser?.blockedUsers]);
 
   // Real-time Firestore subscription for active Chat Messages & Read Status
   useEffect(() => {
@@ -473,15 +505,26 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     const unsubscribe = subscribeToCallLogs(currentUser.id, (calls) => {
-      setCallLogs(calls);
+      // Filter out calls where the other party is blocked
+      const validCalls = calls.filter(call => {
+        const otherUserId = call.callerId === currentUser.id ? call.receiverId : call.callerId;
+        return !currentUser.blockedUsers?.includes(otherUserId);
+      });
+      setCallLogs(validCalls);
     });
     return () => unsubscribe();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.blockedUsers]);
 
   // Real-time Incoming Call Signaling subscription
   useEffect(() => {
     if (!currentUser) return;
     const unsubscribe = subscribeToIncomingCalls(currentUser.id, (call) => {
+      // Filter out incoming calls from blocked users
+      if (call && currentUser.blockedUsers?.includes(call.callerId)) {
+        updateCallStatus(call.id, 'declined').catch(console.error);
+        setIncomingCallSession(null);
+        return;
+      }
       setIncomingCallSession(call);
       if (call) {
         // Play ringtone on incoming call
@@ -489,7 +532,7 @@ export default function App() {
       }
     });
     return () => unsubscribe();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.blockedUsers]);
 
   // Real-time Active Call status listener (handles peer status changes)
   useEffect(() => {
@@ -520,21 +563,26 @@ export default function App() {
 
     let initialLoaded = false;
     const unsubscribe = subscribeToUserNotifications(currentUser.id, (notifList) => {
+      // Filter out notifications from blocked users
+      const validNotifs = notifList.filter(n => !currentUser.blockedUsers?.includes(n.senderId || ''));
+      
       // If a new notification arrives while user is active, alert with chime & glass banner
-      if (initialLoaded && notifList.length > 0) {
-        const newest = notifList[0];
-        if (!newest.isRead) {
+      if (initialLoaded && validNotifs.length > 0 && notifList.length > 0) {
+        // Find if there's a new unread notification that is valid
+        const newest = validNotifs[0];
+        // Ensure it's actually new and unread
+        if (newest && !newest.isRead && newest.id === notifList[0]?.id) {
           playGlassChimeSound('incoming');
           setInAppToast(newest);
           setTimeout(() => setInAppToast(null), 5000);
         }
       }
       initialLoaded = true;
-      setNotifications(notifList);
+      setNotifications(validNotifs);
     });
 
     return () => unsubscribe();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.blockedUsers]);
 
   // Handle Search and Filter logic for Chats
   const filteredChats = useMemo(() => {
@@ -542,9 +590,9 @@ export default function App() {
 
     // Filter by tab / category
     if (activeFilter === 'unread') {
-      result = result.filter(c => (c.unreadCount && c.unreadCount > 0) || !c.lastMessage?.isRead);
+      result = result.filter(c => (c.unreadCount && c.unreadCount > 0) || (c.lastMessage && !c.lastMessage.isRead && c.lastMessage.senderId !== currentUser?.id));
     } else if (activeFilter === 'read') {
-      result = result.filter(c => (!c.unreadCount || c.unreadCount === 0) && c.lastMessage?.isRead);
+      result = result.filter(c => (!c.unreadCount || c.unreadCount === 0) && (!c.lastMessage || c.lastMessage.isRead || c.lastMessage.senderId === currentUser?.id));
     } else if (activeFilter === 'pinned') {
       result = result.filter(c => c.isPinned);
     }
@@ -588,7 +636,11 @@ export default function App() {
 
   // Counts for pills
   const counts = useMemo(() => {
-    const unread = chats.filter(c => (c.unreadCount && c.unreadCount > 0) || !c.lastMessage?.isRead).length;
+    const unread = chats.filter(c => {
+      if (c.unreadCount && c.unreadCount > 0) return true;
+      if (c.lastMessage && !c.lastMessage.isRead && c.lastMessage.senderId !== currentUser?.id) return true;
+      return false;
+    }).length;
     const pinned = chats.filter(c => c.isPinned).length;
     return {
       all: chats.length,
@@ -596,7 +648,7 @@ export default function App() {
       read: Math.max(0, chats.length - unread),
       pinned: pinned
     };
-  }, [chats]);
+  }, [chats, currentUser?.id]);
 
   const unreadNotificationsCount = useMemo(() => {
     return notifications.filter(n => !n.isRead && n.isAdmin).length;
@@ -614,6 +666,8 @@ export default function App() {
 
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     const senderDisplay = currentUser.username ? `@${currentUser.username}` : (currentUser.fullName || 'User');
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const initialStatus = isOffline ? 'sending' : 'sent';
     
     try {
       await sendFirestoreMessage(
@@ -627,7 +681,7 @@ export default function App() {
           text: content,
           timestamp,
           createdAt: Date.now(),
-          status: 'sent',
+          status: initialStatus,
           type,
           mediaUrl,
           mediaMeta,
@@ -658,6 +712,7 @@ export default function App() {
     if (selectedChat?.id === chatId) {
       setSelectedChat(null);
     }
+    handleShowSuccessModal('delete', 'Chat Deleted', 'The chat history has been removed.');
   };
 
   const handleTogglePin = async (chatId: string) => {
@@ -836,17 +891,23 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    clearLocalSession();
-    setCurrentUser(null);
-    setSelectedChat(null);
-    setIsAuthOpen(true);
+  const handleLogout = async () => {
+    if (currentUser) {
+      await updateUserPresence(currentUser.id, 'offline');
+    }
+    handleShowSuccessModal('logout', 'Signed Out Successfully', 'See you soon!');
+    setTimeout(() => {
+      clearLocalSession();
+      setCurrentUser(null);
+      setSelectedChat(null);
+      setIsAuthOpen(true);
+    }, 600);
   };
 
-  const themeStyles = getThemeStyles(currentUser?.appColor);
+  const themeStyles = getThemeStyles(currentUser?.appColor || 'sapphire');
 
   useEffect(() => {
-    const appColor = currentUser?.appColor || 'ruby';
+    const appColor = currentUser?.appColor || 'sapphire';
     const st = getThemeStyles(appColor);
     document.documentElement.style.setProperty('--theme-primary', st.primaryHex);
     document.documentElement.style.setProperty('--theme-secondary', st.secondaryHex);
@@ -873,7 +934,7 @@ export default function App() {
 
   return (
     <div 
-      className={`min-h-screen animated-gradient-bg ${theme === 'light' ? 'light-theme text-black' : 'dark-theme text-slate-100'} font-['Plus_Jakarta_Sans',sans-serif] flex flex-col relative overflow-x-hidden selection:bg-red-500/30 selection:text-red-200`}
+      className={`min-h-screen animated-gradient-bg ${theme === 'light' ? 'light-theme text-black' : 'dark-theme text-slate-100'} font-['Plus_Jakarta_Sans',sans-serif] flex flex-col relative overflow-x-hidden selection:bg-blue-500/30 selection:text-blue-200`}
       style={{
         ['--theme-primary' as any]: themeStyles.primaryHex,
         ['--theme-secondary' as any]: themeStyles.secondaryHex,
@@ -885,7 +946,7 @@ export default function App() {
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0a0c10] select-none pointer-events-auto transition-opacity duration-300">
           <div className="flex flex-col items-center justify-center space-y-6">
             {/* Elegant rotating mirror glass app icon container */}
-            <div className="w-24 h-24 rounded-3xl mirror-glass border border-red-500/30 flex items-center justify-center shadow-[0_0_50px_rgba(239,68,68,0.15)] animate-spin">
+            <div className="w-24 h-24 rounded-3xl mirror-glass border border-blue-500/30 flex items-center justify-center shadow-[0_0_50px_rgba(59,130,246,0.15)] animate-spin">
               <img 
                 src="/icon-192.png" 
                 alt="Splendid Chat Logo" 
@@ -894,10 +955,10 @@ export default function App() {
               />
             </div>
             <div className="flex flex-col items-center space-y-1 text-center">
-              <h1 className="text-lg font-black tracking-widest bg-gradient-to-r from-red-500 via-rose-500 to-red-600 bg-clip-text text-transparent">
+              <h1 className="text-lg font-black tracking-widest bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600 bg-clip-text text-transparent">
                 SPLENDID CHAT
               </h1>
-              <span className="text-[9px] font-extrabold uppercase tracking-widest text-red-500/60 font-mono">
+              <span className="text-[9px] font-extrabold uppercase tracking-widest text-blue-500/60 font-mono">
                 Splendid Experience
               </span>
             </div>
@@ -915,15 +976,15 @@ export default function App() {
             }
             setInAppToast(null);
           }}
-          className="fixed top-4 inset-x-4 max-w-sm mx-auto z-50 p-3 rounded-2xl mirror-glass border border-red-500/30 shadow-2xl flex items-center gap-3 cursor-pointer animate-in slide-in-from-top duration-75 hover:scale-[1.02] transition-transform select-none"
+          className="fixed top-4 inset-x-4 max-w-sm mx-auto z-50 p-3 rounded-2xl mirror-glass border border-blue-500/30 shadow-2xl flex items-center gap-3 cursor-pointer animate-in slide-in-from-top duration-75 hover:scale-[1.02] transition-transform select-none"
         >
-          <div className="w-10 h-10 rounded-2xl bg-red-600/20 border border-red-500/40 text-red-400 flex items-center justify-center font-bold text-lg shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-blue-600/20 border border-blue-500/40 text-blue-400 flex items-center justify-center font-bold text-lg shrink-0">
             {inAppToast.avatar || '💬'}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-100 truncate">{inAppToast.title}</span>
-              <span className="text-[10px] text-red-400 font-semibold uppercase">Alert</span>
+              <span className="text-[10px] text-blue-400 font-semibold uppercase">Alert</span>
             </div>
             <p className="text-xs text-slate-300 truncate">{inAppToast.body}</p>
           </div>
@@ -1011,7 +1072,7 @@ export default function App() {
             {searchQuery.trim() && (
               <div className="w-full px-4 pt-1 pb-2 space-y-2">
                 <div className="flex items-center justify-between px-1">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-red-400 flex items-center gap-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
                     <span>👥</span>
                     <span>Contacts Directory Results ({matchedContacts.length})</span>
                   </span>
@@ -1037,7 +1098,7 @@ export default function App() {
                             {user.avatar || '👤'}
                           </div>
                           <div className="min-w-0">
-                            <h5 className="text-xs font-bold text-white group-hover:text-red-400 transition-colors truncate">
+                            <h5 className="text-xs font-bold text-white group-hover:text-blue-400 transition-colors truncate">
                               @{user.username}
                             </h5>
                             <p className="text-[10px] text-slate-400 font-mono truncate">
@@ -1056,7 +1117,7 @@ export default function App() {
                           </button>
                           <button
                             onClick={() => handleStartChatWithUser(user)}
-                            className="px-2.5 py-1 rounded-lg bg-red-600/30 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-[11px] font-bold transition-all flex items-center gap-1"
+                            className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 text-[11px] font-bold transition-all flex items-center gap-1"
                           >
                             <span>💬</span>
                             <span>Chat</span>
@@ -1090,6 +1151,7 @@ export default function App() {
               <ChatList
                 chats={filteredChats}
                 selectedChatId={selectedChat?.id || null}
+                currentUserId={currentUser?.id}
                 onSelectChat={handleSelectChat}
                 onDeleteChat={handleDeleteChat}
                 onTogglePin={handleTogglePin}
@@ -1109,7 +1171,7 @@ export default function App() {
             <button
               id="fab-start-new-chat"
               onClick={() => setIsStartNewChatOpen(true)}
-              className="fixed bottom-24 right-5 sm:right-[calc(50%-200px)] z-30 flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-r from-red-600 via-red-500 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-2xl shadow-red-600/40 border border-white/20 backdrop-blur-xl transition-all active:scale-95 select-none animate-in fade-in zoom-in-95 animate-fab-idle group"
+              className="fixed bottom-24 right-5 sm:right-[calc(50%-200px)] z-30 flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white font-bold text-xs shadow-2xl shadow-blue-600/40 border border-white/20 backdrop-blur-xl transition-all active:scale-95 select-none animate-in fade-in zoom-in-95 animate-fab-idle group"
               title="Find Contact & Chat"
             >
               <span className="text-base group-hover:scale-110 transition-transform">💬➕</span>
@@ -1135,7 +1197,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsStartNewChatOpen(true)}
-                    className="px-3 py-1.5 rounded-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-md shadow-red-600/30 transition-all flex items-center gap-1.5"
+                    className="px-3 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-blue-600/30 transition-all flex items-center gap-1.5"
                   >
                     <span>🔍</span>
                     <span>Find Contact</span>
@@ -1160,7 +1222,7 @@ export default function App() {
                   <div className="flex items-center justify-center gap-2 pt-2">
                     <button
                       onClick={() => setIsStartNewChatOpen(true)}
-                      className="px-4 py-2 rounded-full bg-gradient-to-r from-red-600 to-rose-600 text-white text-xs font-bold shadow-md shadow-red-600/30"
+                      className="px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold shadow-md shadow-blue-600/30"
                     >
                       💬 Find Contact
                     </button>
@@ -1192,11 +1254,11 @@ export default function App() {
                         <div
                           key={user.id}
                           onClick={() => handleOpenUserProfile(user)}
-                          className={`p-3 rounded-2xl mirror-glass-card border flex items-center justify-between gap-3 cursor-pointer transition-all select-none ${
-                            isSelf ? 'border-red-500/30 bg-red-950/20' : 'border-white/10 hover:border-white/20'
+                          className={`p-2.5 rounded-xl mirror-glass-card border flex items-center justify-between gap-2.5 cursor-pointer transition-all select-none ${
+                            isSelf ? 'border-blue-500/30 bg-blue-950/20' : 'border-white/10 hover:border-white/20'
                           }`}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-2.5 min-w-0">
                             {(() => {
                               const userStatuses = activeStatuses.filter(s => s.userId === user.id);
                               const hasStatus = userStatuses.length > 0;
@@ -1209,16 +1271,16 @@ export default function App() {
                                       setActiveStatusViewer({ userId: user.id, statuses: userStatuses });
                                     }
                                   }}
-                                  className={`relative w-11 h-11 rounded-2xl mirror-glass-input border flex items-center justify-center font-bold text-lg text-white shrink-0 shadow-sm ${
+                                  className={`relative w-9 h-9 rounded-xl mirror-glass-input border flex items-center justify-center font-bold text-base text-white shrink-0 shadow-sm ${
                                     hasStatus 
-                                      ? 'ring-2 ring-red-500 ring-offset-2 ring-offset-[#121418] border-red-500/30' 
+                                      ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-[#121418] border-blue-500/30' 
                                       : 'border-white/10'
                                   }`}
                                   title={hasStatus ? "Click to view Status update" : "Contact avatar"}
                                 >
                                   {user.avatar || '👤'}
                                   <span
-                                    className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121418] ${
+                                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#121418] ${
                                       user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
                                     }`}
                                   />
@@ -1227,16 +1289,16 @@ export default function App() {
                             })()}
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <h4 className="text-sm font-bold text-slate-100 truncate">
+                                <h4 className="text-xs font-bold text-slate-100 truncate">
                                   {displayUsername}
                                 </h4>
                                 {isSelf && (
-                                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[9px] font-bold">
+                                  <span className="px-1 py-0.2 rounded bg-blue-500/20 text-blue-400 text-[8px] font-bold">
                                     You
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-slate-400 font-mono truncate">
+                              <p className="text-[11px] text-slate-400 font-mono truncate">
                                 {user.fullName} • 📱 {user.phoneNumber}
                               </p>
                             </div>
@@ -1245,7 +1307,7 @@ export default function App() {
                           <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => handleOpenUserProfile(user)}
-                              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center text-sm"
+                              className="w-6.5 h-6.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center text-xs"
                               title="View Contact Info"
                             >
                               ℹ️
@@ -1253,7 +1315,7 @@ export default function App() {
                             {!isSelf && (
                               <button
                                 onClick={() => handleStartChatWithUser(user)}
-                                className="px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-xs font-bold transition-all flex items-center gap-1"
+                                className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 text-[11px] font-bold transition-all flex items-center gap-1"
                               >
                                 <span>💬</span>
                                 <span>Chat</span>
@@ -1285,6 +1347,7 @@ export default function App() {
                 onTogglePin={handleTogglePin}
                 onOpenCreateGroup={() => setIsCreateGroupOpen(true)}
                 onOpenGroupProfile={handleOpenGroupProfile}
+                onShowSuccessModal={handleShowSuccessModal}
               />
             )}
           </div>
@@ -1305,7 +1368,7 @@ export default function App() {
             {currentUser ? (
               <div className="p-5 rounded-3xl mirror-glass-card border border-white/10 space-y-4">
                 <div className="flex items-center gap-3.5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 flex items-center justify-center text-white text-2xl ring-2 ring-red-500/40 shadow-lg">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white text-2xl ring-2 ring-blue-500/40 shadow-lg">
                     {currentUser.avatar || '👤'}
                   </div>
                   <div>
@@ -1352,7 +1415,7 @@ export default function App() {
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                       theme === 'dark'
                         ? 'bg-white/10 hover:bg-white/20 text-white'
-                        : 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                        : 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                     }`}
                   >
                     <span>{theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}</span>
@@ -1386,7 +1449,7 @@ export default function App() {
                             }
                           }}
                           className={`p-2 rounded-xl text-left transition-all flex items-center gap-2 ${wp.class} ${
-                            isSelected ? 'ring-2 ring-red-500 shadow-md scale-[1.01]' : 'opacity-75 hover:opacity-100 border border-white/10'
+                            isSelected ? 'ring-2 ring-blue-500 shadow-md scale-[1.01]' : 'opacity-75 hover:opacity-100 border border-white/10'
                           }`}
                         >
                           <span className="text-base shrink-0">
@@ -1401,92 +1464,9 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* App Color Theme Selector in Settings Tab (5 Classic & 5 Neon Colors) */}
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-lg">🎨</span>
-                      <div>
-                        <div className="text-xs font-bold text-slate-100">Entire App Color Theme</div>
-                        <div className="text-[10px] text-slate-400">
-                          Choose from 5 classic and 5 neon color palettes (automatically applied)
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Classic Colors Category */}
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Classic Colors (5)</p>
-                    <div className="grid grid-cols-5 gap-2">
-                      {APP_COLOR_OPTIONS.filter(c => c.category === 'classic').map((color) => {
-                        const isSelected = (currentUser.appColor || 'ruby') === color.id;
-                        return (
-                          <button
-                            key={color.id}
-                            type="button"
-                            onClick={async () => {
-                              if (currentUser) {
-                                const updated = await updateUserProfile(currentUser.id, { appColor: color.id });
-                                if (updated) setCurrentUser(updated);
-                              }
-                            }}
-                            className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer border relative group ${
-                              isSelected 
-                                ? 'bg-white/15 border-white ring-2 ring-red-500 scale-105 shadow-lg' 
-                                : 'bg-black/30 border-white/10 hover:bg-white/10'
-                            }`}
-                            title={color.name}
-                          >
-                            <span className="text-xl mb-1">{color.icon}</span>
-                            <span className="text-[9px] font-bold text-slate-200 truncate w-full text-center">{color.name.split(' ')[0]}</span>
-                            {isSelected && (
-                              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-[9px] text-white flex items-center justify-center shadow">✓</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Neon Colors Category */}
-                  <div className="space-y-1.5 pt-1">
-                    <p className="text-[10px] uppercase font-extrabold text-cyan-400 tracking-wider">Neon Glow Colors (5)</p>
-                    <div className="grid grid-cols-5 gap-2">
-                      {APP_COLOR_OPTIONS.filter(c => c.category === 'neon').map((color) => {
-                        const isSelected = (currentUser.appColor || 'ruby') === color.id;
-                        return (
-                          <button
-                            key={color.id}
-                            type="button"
-                            onClick={async () => {
-                              if (currentUser) {
-                                const updated = await updateUserProfile(currentUser.id, { appColor: color.id });
-                                if (updated) setCurrentUser(updated);
-                              }
-                            }}
-                            className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all cursor-pointer border relative group ${
-                              isSelected 
-                                ? 'bg-white/20 border-cyan-400 ring-2 ring-cyan-400 scale-105 shadow-[0_0_15px_rgba(0,242,254,0.5)]' 
-                                : 'bg-black/40 border-white/10 hover:bg-white/10'
-                            }`}
-                            title={color.name}
-                          >
-                            <span className="text-xl mb-1">{color.icon}</span>
-                            <span className="text-[9px] font-bold text-cyan-200 truncate w-full text-center">{color.name.split(' ')[1] || color.name}</span>
-                            {isSelected && (
-                              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-cyan-500 text-[9px] text-slate-950 font-extrabold flex items-center justify-center shadow">✓</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
                 <button
                   onClick={() => setIsAuthOpen(true)}
-                  className="w-full py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-200 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-200 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <span>🔄</span>
                   <span>Switch / Register Account</span>
@@ -1494,7 +1474,7 @@ export default function App() {
 
                 <button
                   onClick={handleLogout}
-                  className="w-full py-2.5 rounded-2xl bg-rose-950/30 hover:bg-rose-900/40 border border-rose-500/30 text-rose-300 text-xs font-bold transition-all flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-2xl bg-blue-950/30 hover:bg-blue-900/40 border border-blue-500/30 text-blue-300 text-xs font-bold transition-all flex items-center justify-center gap-2"
                 >
                   <span>🚪</span>
                   <span>Sign Out</span>
@@ -1502,7 +1482,7 @@ export default function App() {
               </div>
             ) : (
               <div className="p-8 rounded-3xl mirror-glass-card border border-white/10 text-center space-y-4">
-                <div className="w-14 h-14 rounded-2xl bg-red-600/20 border border-red-500/30 flex items-center justify-center mx-auto text-2xl">
+                <div className="w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center mx-auto text-2xl">
                   👤
                 </div>
                 <h4 className="text-sm font-bold text-slate-100">Sign in to your account</h4>
@@ -1511,7 +1491,7 @@ export default function App() {
                 </p>
                 <button
                   onClick={() => setIsAuthOpen(true)}
-                  className="px-5 py-2.5 rounded-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold text-xs shadow-lg shadow-red-600/30 active:scale-95"
+                  className="px-5 py-2.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-lg shadow-blue-600/30 active:scale-95"
                 >
                   🚀 Sign In / Register
                 </button>
@@ -1583,6 +1563,21 @@ export default function App() {
           setSelectedUserProfile(null);
         }}
         user={selectedUserProfile}
+        currentUser={currentUser}
+        onToggleBlockUser={async (userId) => {
+          if (!currentUser) return;
+          const currentBlocked = currentUser.blockedUsers || [];
+          const isBlocked = currentBlocked.includes(userId);
+          const newBlocked = isBlocked
+            ? currentBlocked.filter(id => id !== userId)
+            : [...currentBlocked, userId];
+          
+          const updated = { blockedUsers: newBlocked };
+          const neu = { ...currentUser, ...updated };
+          setCurrentUser(neu);
+          saveLocalUser(neu);
+          await updateUserProfile(currentUser.id, updated);
+        }}
         onStartChat={(user) => {
           handleStartChatWithUser(user);
           setIsUserProfileModalOpen(false);
@@ -1644,6 +1639,7 @@ export default function App() {
         onAddNewContact={handleAddNewContact}
         onStartChatWithUser={handleStartChatWithUser}
         onOpenUserProfile={handleOpenUserProfile}
+        onShowSuccessModal={handleShowSuccessModal}
       />
 
       <StartNewChatModal
@@ -1652,6 +1648,7 @@ export default function App() {
         currentUser={currentUser}
         onStartChatWithUser={handleStartChatWithUser}
         onOpenCreateGroup={() => setIsCreateGroupOpen(true)}
+        onShowSuccessModal={handleShowSuccessModal}
       />
 
       <CreateGroupModal
@@ -1664,6 +1661,7 @@ export default function App() {
             setSelectedChat(target);
           }
         }}
+        onShowSuccessModal={handleShowSuccessModal}
       />
 
       {currentUser && (
@@ -1681,6 +1679,7 @@ export default function App() {
           onLogout={handleLogout}
           theme={theme}
           onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+          onShowSuccessModal={handleShowSuccessModal}
         />
       )}
 
@@ -1694,6 +1693,7 @@ export default function App() {
           saveLocalUser(user);
           setIsAuthOpen(false);
         }}
+        onShowSuccessModal={handleShowSuccessModal}
       />
 
       <VoiceRecorderModal
@@ -1713,8 +1713,8 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-75">
           <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/10 shadow-2xl flex flex-col items-center justify-between min-h-[360px] text-center select-none">
             <div className="space-y-1">
-              <span className="px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/30 inline-flex items-center gap-1.5 animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-red-400" />
+              <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs font-bold border border-blue-500/30 inline-flex items-center gap-1.5 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-blue-400" />
                 <span>INCOMING {incomingCallSession.isVideo ? 'VIDEO' : 'AUDIO'} CALL</span>
               </span>
               <p className="text-xs text-slate-400 font-medium pt-1">Ringing...</p>
@@ -1722,7 +1722,7 @@ export default function App() {
 
             <div className="my-6 flex flex-col items-center space-y-4">
               <div className="relative">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-red-500/40 flex items-center justify-center text-4xl shadow-2xl animate-bounce">
+                <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-blue-500/40 flex items-center justify-center text-4xl shadow-2xl animate-bounce">
                   {incomingCallSession.callerAvatar || '👤'}
                 </div>
               </div>
@@ -1741,7 +1741,7 @@ export default function App() {
                   await updateCallStatus(incomingCallSession.id, 'declined');
                   setIncomingCallSession(null);
                 }}
-                className="flex-1 h-12 rounded-2xl bg-rose-600/25 border border-rose-500/40 hover:bg-rose-600 text-rose-300 hover:text-white font-bold text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                className="flex-1 h-12 rounded-2xl bg-blue-600/25 border border-blue-500/40 hover:bg-blue-600 text-blue-300 hover:text-white font-bold text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 <span>📵</span>
                 <span>Decline</span>
@@ -1838,6 +1838,15 @@ export default function App() {
           onReshareStatus={handleReshareStatus}
         />
       )}
+
+      {/* Confirmation & Action Success Animation Modal */}
+      <SuccessAnimationModal
+        isOpen={successModalState.isOpen}
+        type={successModalState.type}
+        title={successModalState.title}
+        subtitle={successModalState.subtitle}
+        onClose={() => setSuccessModalState(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

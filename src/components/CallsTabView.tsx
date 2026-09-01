@@ -35,7 +35,7 @@ export const CallsTabView: React.FC<CallsTabViewProps> = ({
 
         <button
           onClick={onOpenContacts}
-          className="px-3 py-1.5 rounded-full bg-red-600/20 border border-red-500/40 text-red-300 hover:text-white hover:bg-red-600 text-xs font-bold transition-all"
+          className="px-3 py-1.5 rounded-full bg-blue-600/20 border border-blue-500/40 text-blue-300 hover:text-white hover:bg-blue-600 text-xs font-bold transition-all"
         >
           <span>➕ New Call</span>
         </button>
@@ -59,7 +59,7 @@ export const CallsTabView: React.FC<CallsTabViewProps> = ({
           </p>
           <button
             onClick={onOpenContacts}
-            className="mt-2 px-4 py-2 rounded-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold text-xs shadow-md shadow-red-600/30 transition-all active:scale-95 flex items-center gap-1.5 mx-auto"
+            className="mt-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-md shadow-blue-600/30 transition-all active:scale-95 flex items-center gap-1.5 mx-auto"
           >
             <span>👥</span>
             <span>Browse Contacts to Call</span>

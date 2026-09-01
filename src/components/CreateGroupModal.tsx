@@ -8,6 +8,7 @@ interface CreateGroupModalProps {
   currentUser: User;
   allUsers: User[];
   onGroupCreated: (newChatId: string) => void;
+  onShowSuccessModal?: (type: 'generic' | 'profile' | 'delete', title: string, subtitle?: string) => void;
 }
 
 const GROUP_AVATARS = ['👥', '🚀', '💬', '🎉', '🌟', '💼', '🔥', '🏆', '🍕', '💻'];
@@ -17,7 +18,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   onClose,
   currentUser,
   allUsers,
-  onGroupCreated
+  onGroupCreated,
+  onShowSuccessModal
 }) => {
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
@@ -49,6 +51,9 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         selectedAvatar,
         groupDescription.trim()
       );
+      if (onShowSuccessModal) {
+        onShowSuccessModal('generic', 'Group Created!', `"${groupName.trim()}" is ready with ${selectedMembers.length + 1} members.`);
+      }
       onGroupCreated(newChat.id);
       onClose();
     } catch (e) {
@@ -89,7 +94,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   onClick={() => setSelectedAvatar(avatar)}
                   className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg transition-all shrink-0 ${
                     selectedAvatar === avatar
-                      ? 'bg-red-600 text-white shadow-md shadow-red-600/30 scale-105'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 scale-105'
                       : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10'
                   }`}
                 >
@@ -107,7 +112,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               value={groupName}
               onChange={e => setGroupName(e.target.value)}
               placeholder="e.g. Splendid Group, Project Alpha"
-              className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 transition-colors"
+              className="w-full h-11 px-3.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
               required
             />
           </div>
@@ -119,7 +124,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               value={groupDescription}
               onChange={e => setGroupDescription(e.target.value)}
               placeholder="What's this group about?"
-              className="w-full min-h-[80px] p-3.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 transition-colors resize-none"
+              className="w-full min-h-[80px] p-3.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors resize-none"
             />
           </div>
 
@@ -127,7 +132,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-300">Add Members</label>
-              <span className="text-[10px] text-red-400 font-bold">
+              <span className="text-[10px] text-blue-400 font-bold">
                 {selectedUserIds.length} selected
               </span>
             </div>
@@ -145,7 +150,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                       onClick={() => toggleUser(user.id)}
                       className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
                         isSelected
-                          ? 'bg-red-500/10 border-red-500/30 text-white'
+                          ? 'bg-blue-500/10 border-blue-500/30 text-white'
                           : 'bg-white/5 hover:bg-white/10 border-white/5 text-slate-300'
                       }`}
                     >
@@ -159,7 +164,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                         </div>
                       </div>
                       <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold border transition-all ${
-                        isSelected ? 'bg-red-600 border-red-500 text-white' : 'border-white/20 bg-transparent'
+                        isSelected ? 'bg-blue-600 border-blue-500 text-white' : 'border-white/20 bg-transparent'
                       }`}>
                         {isSelected ? '✓' : ''}
                       </div>
@@ -173,7 +178,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           <button
             type="submit"
             disabled={!groupName.trim() || selectedUserIds.length === 0 || isCreating}
-            className="w-full h-11 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-red-600/30 transition-all flex items-center justify-center gap-1.5"
+            className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-blue-600/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
           >
             {isCreating ? 'Creating Group...' : 'Create Group Chat'}
           </button>

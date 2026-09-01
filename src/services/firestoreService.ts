@@ -686,6 +686,112 @@ export async function sendAdminNotification(targetUserId: string, title: string,
   }
 }
 
+// ----------------- OFFLINE PENDING MESSAGES SYNC ----------------- //
+
+export interface OfflineQueuedMessage {
+  id: string;
+  chatId: string;
+  message: Omit<Message, 'id'> & { id?: string };
+  currentUserId: string;
+  queuedAt: number;
+}
+
+const OFFLINE_QUEUE_KEY = 'splendid_offline_msg_queue';
+
+export function getOfflineMessageQueue(): OfflineQueuedMessage[] {
+  try {
+    const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function addMessageToOfflineQueue(item: OfflineQueuedMessage): void {
+  try {
+    const queue = getOfflineMessageQueue();
+    const existingIndex = queue.findIndex(q => q.id === item.id);
+    if (existingIndex >= 0) {
+      queue[existingIndex] = item;
+    } else {
+      queue.push(item);
+    }
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  } catch (e) {
+    console.warn('Failed to save offline queued message:', e);
+  }
+}
+
+export function removeMessageFromOfflineQueue(messageId: string): void {
+  try {
+    const queue = getOfflineMessageQueue().filter(q => q.id !== messageId);
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  } catch (e) {
+    console.warn('Failed to remove from offline message queue:', e);
+  }
+}
+
+export async function sendPendingOfflineMessages(currentUserId?: string): Promise<number> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return 0;
+  }
+
+  let sentCount = 0;
+  const queue = getOfflineMessageQueue();
+
+  // 1. Process queued messages from localStorage
+  for (const item of queue) {
+    if (currentUserId && item.currentUserId !== currentUserId) {
+      continue;
+    }
+    try {
+      const payload = {
+        ...item.message,
+        status: 'sent' as const,
+        timestamp: item.message.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+      };
+      await sendFirestoreMessage(item.chatId, payload, item.currentUserId);
+      removeMessageFromOfflineQueue(item.id);
+      sentCount++;
+    } catch (e) {
+      console.warn('Error sending queued offline message:', e);
+    }
+  }
+
+  // 2. Also check if any messages in Firestore under current user's chats have status === 'pending' or 'sending'
+  if (currentUserId) {
+    try {
+      const chatsRef = collection(db, 'chats');
+      const chatsSnap = await getDocs(chatsRef);
+      for (const chatDoc of chatsSnap.docs) {
+        const data = chatDoc.data();
+        const pIds = data.participantIds || [];
+        if (!pIds.includes(currentUserId)) continue;
+
+        const msgsRef = collection(db, 'chats', chatDoc.id, 'messages');
+        const pendingSnap = await getDocs(query(msgsRef, where('senderId', '==', currentUserId)));
+        for (const msgDoc of pendingSnap.docs) {
+          const mData = msgDoc.data();
+          if (mData.status === 'pending' || mData.status === 'sending') {
+            await updateDoc(doc(db, 'chats', chatDoc.id, 'messages', msgDoc.id), {
+              status: 'sent'
+            }).catch(() => {});
+            sentCount++;
+          }
+        }
+      }
+    } catch (e) {
+      console.debug('Error updating pending Firestore message statuses:', e);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('splendid-offline-queue-flushed', { detail: { sentCount } }));
+  }
+
+  return sentCount;
+}
+
 // ----------------- FORWARD MESSAGE HELPER ----------------- //
 
 export async function forwardFirestoreMessage(
@@ -1010,17 +1116,56 @@ export async function autoCleanupExpiredMediaForUser(userId: string): Promise<nu
           const isExpiring = isExpiringMediaOrStickerOrEmoji(data);
           const expiresAt = data.expiresAt || (isExpiring ? createdAt + MEDIA_EXPIRATION_MS : undefined);
 
-      if (expiresAt && now >= expiresAt) {
-        await deleteFirestoreMessage(chatDocSnap.id, docSnap.id).catch(() => {});
-        purgedCount++;
-      }
+          if (expiresAt && now >= expiresAt) {
+            await deleteFirestoreMessage(chatDocSnap.id, docSnap.id).catch(() => {});
+            purgedCount++;
+          }
         }
       }
     }
+
+    // Also cleanup expired statuses (> 24h)
+    try {
+      const statusesRef = collection(db, 'statuses');
+      const statusSnap = await getDocs(statusesRef);
+      for (const sDoc of statusSnap.docs) {
+        const sData = sDoc.data();
+        if (sData.expiresAt && now >= sData.expiresAt) {
+          await deleteDoc(doc(db, 'statuses', sDoc.id)).catch(() => {});
+          purgedCount++;
+        }
+      }
+    } catch (e) {
+      console.debug('Status auto cleanup error:', e);
+    }
+
     return purgedCount;
   } catch (e) {
     console.debug('Background auto cleanup error:', e);
     return 0;
+  }
+}
+
+export async function deleteContactUser(targetUserId: string, currentUserId: string): Promise<void> {
+  try {
+    // 1. Delete mutual private chats between these two users
+    const deterministicId1 = [currentUserId, targetUserId].sort().join('_');
+    const deterministicId2 = `direct_${deterministicId1}`;
+    
+    await deleteDoc(doc(db, 'chats', deterministicId1)).catch(() => {});
+    await deleteDoc(doc(db, 'chats', deterministicId2)).catch(() => {});
+
+    // Also check any chats containing both participants
+    const chatsRef = collection(db, 'chats');
+    const chatsSnap = await getDocs(chatsRef);
+    for (const cDoc of chatsSnap.docs) {
+      const pIds: string[] = cDoc.data().participantIds || [];
+      if (!cDoc.data().isGroup && pIds.includes(targetUserId) && pIds.includes(currentUserId)) {
+        await deleteDoc(doc(db, 'chats', cDoc.id)).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('Error deleting contact user:', err);
   }
 }
 
@@ -1060,7 +1205,7 @@ export function subscribeToUserNotifications(
   });
 }
 
-export async function updateUserPresence(userId: string, status: 'online' | 'offline' | 'away', lastSeen: string): Promise<void> {
+export async function updateUserPresence(userId: string, status: 'online' | 'offline' | 'away', lastSeen: string = 'Last seen recently'): Promise<void> {
   try {
     const userRef = doc(db, 'users', userId);
     await updateDoc(userRef, {
@@ -1345,6 +1490,8 @@ export function subscribeToActiveStatuses(
       const data = docSnap.data() as UserStatus;
       if (data.expiresAt > now) {
         list.push(data);
+      } else {
+        deleteDoc(doc(db, 'statuses', docSnap.id)).catch(() => {});
       }
     });
     // Sort chronologically

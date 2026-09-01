@@ -11,13 +11,15 @@ export interface User {
   bio?: string;
   role?: string;
   wallpaper?: string;
-  appColor?: string; // 5 classic or 5 neon app colors
+  appColor?: string; // Standard Electric Sapphire Blue
   glassOpacity?: number; // 0 to 100
   glassBlur?: number; // 0 to 20
   allowReshare?: boolean; // toggle in settings, defaults to true
   allowPhoneNumberVisibility?: boolean; // toggle in settings, defaults to true
+  readReceipts?: boolean; // toggle in settings, defaults to true
   statusPrivacy?: 'everyone' | 'contacts' | 'specific';
   statusAllowedUsers?: string[];
+  blockedUsers?: string[];
   createdAt: number;
 }
 
@@ -36,20 +38,7 @@ export interface AppColorTheme {
 }
 
 export const APP_COLOR_OPTIONS: AppColorTheme[] = [
-  // 5 Classic Colors
-  {
-    id: 'ruby',
-    name: 'Ruby Crimson',
-    category: 'classic',
-    primaryHex: '#e11d48',
-    secondaryHex: '#991b1b',
-    gradient: 'from-red-600 via-rose-600 to-red-700',
-    previewClass: 'from-red-600 to-rose-600',
-    glow: 'rgba(225, 29, 72, 0.45)',
-    badge: '🌹 Classic Ruby',
-    description: 'Deep crimson & ruby red tones',
-    icon: '🌹'
-  },
+  // 5 Classic Blue Variations
   {
     id: 'sapphire',
     name: 'Sapphire Blue',
@@ -64,46 +53,59 @@ export const APP_COLOR_OPTIONS: AppColorTheme[] = [
     icon: '💎'
   },
   {
-    id: 'emerald',
-    name: 'Emerald Green',
+    id: 'azure',
+    name: 'Azure Sky',
     category: 'classic',
-    primaryHex: '#059669',
-    secondaryHex: '#065f46',
-    gradient: 'from-emerald-600 via-teal-600 to-emerald-700',
-    previewClass: 'from-emerald-600 to-teal-600',
-    glow: 'rgba(5, 150, 105, 0.45)',
-    badge: '🌿 Lush Emerald',
-    description: 'Refreshing botanical emerald & teal',
-    icon: '🌿'
+    primaryHex: '#0284c7',
+    secondaryHex: '#0369a1',
+    gradient: 'from-sky-500 via-blue-600 to-sky-600',
+    previewClass: 'from-sky-500 to-blue-600',
+    glow: 'rgba(2, 132, 199, 0.45)',
+    badge: '🌊 Azure Horizon',
+    description: 'Bright azure sky and oceanic blue tones',
+    icon: '🌊'
   },
   {
-    id: 'violet',
-    name: 'Royal Violet',
+    id: 'indigo',
+    name: 'Deep Indigo',
     category: 'classic',
-    primaryHex: '#7c3aed',
-    secondaryHex: '#5b21b6',
-    gradient: 'from-violet-600 via-purple-600 to-violet-700',
-    previewClass: 'from-violet-600 to-purple-600',
-    glow: 'rgba(124, 58, 237, 0.45)',
-    badge: '🔮 Imperial Violet',
-    description: 'Mystic amethyst & deep royal purple',
+    primaryHex: '#4f46e5',
+    secondaryHex: '#3730a3',
+    gradient: 'from-indigo-600 via-blue-600 to-violet-700',
+    previewClass: 'from-indigo-600 to-blue-600',
+    glow: 'rgba(79, 70, 229, 0.45)',
+    badge: '🔮 Deep Indigo',
+    description: 'Rich deep indigo and royal twilight blue',
     icon: '🔮'
   },
   {
-    id: 'amber',
-    name: 'Amber Gold',
+    id: 'cobalt',
+    name: 'Midnight Cobalt',
     category: 'classic',
-    primaryHex: '#d97706',
-    secondaryHex: '#92400e',
-    gradient: 'from-amber-500 via-orange-500 to-amber-600',
-    previewClass: 'from-amber-500 to-orange-600',
-    glow: 'rgba(217, 119, 6, 0.45)',
-    badge: '🌅 Golden Amber',
-    description: 'Warm sunset amber & golden honey',
-    icon: '🌅'
+    primaryHex: '#1d4ed8',
+    secondaryHex: '#1e3a8a',
+    gradient: 'from-blue-700 via-indigo-800 to-blue-900',
+    previewClass: 'from-blue-700 to-indigo-800',
+    glow: 'rgba(29, 78, 216, 0.45)',
+    badge: '🌌 Midnight Cobalt',
+    description: 'Dark sophisticated cobalt blue depth',
+    icon: '🌌'
+  },
+  {
+    id: 'ice',
+    name: 'Glacial Ice Blue',
+    category: 'classic',
+    primaryHex: '#38bdf8',
+    secondaryHex: '#0284c7',
+    gradient: 'from-sky-400 via-blue-500 to-cyan-500',
+    previewClass: 'from-sky-400 to-blue-500',
+    glow: 'rgba(56, 189, 248, 0.45)',
+    badge: '❄️ Glacial Ice',
+    description: 'Crisp ice blue and arctic waters',
+    icon: '❄️'
   },
 
-  // 5 Neon Colors
+  // 5 Neon Blue Variations
   {
     id: 'neon-cyan',
     name: 'Neon Cyber Cyan',
@@ -118,56 +120,56 @@ export const APP_COLOR_OPTIONS: AppColorTheme[] = [
     icon: '⚡'
   },
   {
-    id: 'neon-lime',
-    name: 'Neon Matrix Lime',
+    id: 'neon-electric',
+    name: 'Neon Electric Blue',
     category: 'neon',
-    primaryHex: '#39ff14',
-    secondaryHex: '#16a34a',
-    gradient: 'from-lime-400 via-green-400 to-emerald-400',
-    previewClass: 'from-[#39ff14] to-[#16a34a]',
-    glow: 'rgba(57, 255, 20, 0.75)',
-    badge: '🧪 Radioactive Lime',
-    description: 'High-voltage matrix electric lime glow',
-    icon: '🧪'
+    primaryHex: '#3b82f6',
+    secondaryHex: '#1d4ed8',
+    gradient: 'from-blue-400 via-indigo-500 to-sky-400',
+    previewClass: 'from-blue-400 to-indigo-500',
+    glow: 'rgba(59, 130, 246, 0.75)',
+    badge: '⚡ Electric Blue',
+    description: 'Vibrant electric blue laser beam glow',
+    icon: '⚡'
   },
   {
-    id: 'neon-pink',
-    name: 'Neon Synth Pink',
+    id: 'neon-deep',
+    name: 'Neon Deep Blue',
     category: 'neon',
-    primaryHex: '#ff007f',
-    secondaryHex: '#c026d3',
-    gradient: 'from-pink-500 via-fuchsia-500 to-rose-500',
-    previewClass: 'from-[#ff007f] to-[#c026d3]',
-    glow: 'rgba(255, 0, 127, 0.75)',
-    badge: '💖 Synth Magenta',
-    description: 'Vibrant cyberpunk neon magenta glow',
-    icon: '💖'
+    primaryHex: '#2563eb',
+    secondaryHex: '#1e3a8a',
+    gradient: 'from-blue-600 via-cyan-500 to-indigo-600',
+    previewClass: 'from-blue-600 to-cyan-500',
+    glow: 'rgba(37, 99, 235, 0.75)',
+    badge: '💎 Neon Sapphire',
+    description: 'Intense luminous neon sapphire glow',
+    icon: '💎'
   },
   {
-    id: 'neon-orange',
-    name: 'Neon Solar Orange',
+    id: 'neon-aqua',
+    name: 'Neon Aqua Marine',
     category: 'neon',
-    primaryHex: '#ff5f1f',
-    secondaryHex: '#ea580c',
-    gradient: 'from-orange-500 via-amber-400 to-red-500',
-    previewClass: 'from-[#ff5f1f] to-[#ea580c]',
-    glow: 'rgba(255, 95, 31, 0.75)',
-    badge: '🔥 Solar Laser',
-    description: 'Blazing high-energy neon tangerine orange',
-    icon: '🔥'
+    primaryHex: '#06b6d4',
+    secondaryHex: '#0891b2',
+    gradient: 'from-cyan-400 via-blue-500 to-teal-400',
+    previewClass: 'from-cyan-400 to-blue-500',
+    glow: 'rgba(6, 182, 212, 0.75)',
+    badge: '🌊 Neon Aqua',
+    description: 'Blazing high-energy neon aqua marine',
+    icon: '🌊'
   },
   {
-    id: 'neon-purple',
-    name: 'Neon Ultraviolet',
+    id: 'neon-galaxy',
+    name: 'Neon Galaxy Blue',
     category: 'neon',
-    primaryHex: '#bf00ff',
-    secondaryHex: '#7e22ce',
-    gradient: 'from-fuchsia-500 via-purple-500 to-indigo-500',
-    previewClass: 'from-[#bf00ff] to-[#7e22ce]',
-    glow: 'rgba(191, 0, 255, 0.75)',
-    badge: '⚡ Ultraviolet',
-    description: 'Hypnotic ultraviolet laser beam glow',
-    icon: '✨'
+    primaryHex: '#6366f1',
+    secondaryHex: '#4338ca',
+    gradient: 'from-indigo-500 via-sky-400 to-blue-600',
+    previewClass: 'from-indigo-500 to-sky-400',
+    glow: 'rgba(99, 102, 241, 0.75)',
+    badge: '🌌 Galaxy Blue',
+    description: 'Hypnotic galactic blue laser glow',
+    icon: '🌌'
   }
 ];
 
@@ -219,7 +221,7 @@ export interface Message {
   isExpired?: boolean;
   isForwarded?: boolean;
   forwardedFrom?: string;
-  status: 'sending' | 'sent' | 'delivered' | 'read';
+  status: 'sending' | 'pending' | 'sent' | 'delivered' | 'read';
   type: 'text' | 'image' | 'voice' | 'file';
   mediaUrl?: string;
   mediaMeta?: MediaMeta;

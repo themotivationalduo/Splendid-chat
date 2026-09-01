@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { User as UserType, WALLPAPER_OPTIONS, APP_COLOR_OPTIONS } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { User as UserType, WALLPAPER_OPTIONS } from '../types';
 import { checkUsernameAvailable, updateUserProfile, sendAdminNotification } from '../services/firestoreService';
 
 interface ProfileSettingsModalProps {
@@ -11,6 +11,7 @@ interface ProfileSettingsModalProps {
   theme: 'dark' | 'light';
   allUsers?: UserType[];
   onToggleTheme: () => void;
+  onShowSuccessModal?: (type: 'profile' | 'logout' | 'generic', title: string, subtitle?: string) => void;
 }
 
 const FACE_EMOJIS_50 = [
@@ -30,7 +31,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   onLogout,
   theme,
   allUsers,
-  onToggleTheme
+  onToggleTheme,
+  onShowSuccessModal
 }) => {
   const [fullName, setFullName] = useState(currentUser.fullName || currentUser.username);
   const [username, setUsername] = useState(currentUser.username);
@@ -39,10 +41,10 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [bio, setBio] = useState(currentUser.bio || '');
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar || '👤');
   const [selectedWallpaper, setSelectedWallpaper] = useState(currentUser.wallpaper || 'midnight');
-  const [selectedAppColor, setSelectedAppColor] = useState(currentUser.appColor || 'ruby');
   const [glassOpacity, setGlassOpacity] = useState(currentUser.glassOpacity ?? (theme === 'dark' ? 82 : 85));
   const [allowReshare, setAllowReshare] = useState(currentUser.allowReshare !== false);
   const [allowPhoneNumberVisibility, setAllowPhoneNumberVisibility] = useState(currentUser.allowPhoneNumberVisibility !== false);
+  const [readReceipts, setReadReceipts] = useState(currentUser.readReceipts !== false);
   const [statusPrivacy, setStatusPrivacy] = useState(currentUser.statusPrivacy || 'everyone');
   const [statusAllowedUsers, setStatusAllowedUsers] = useState<string[]>(currentUser.statusAllowedUsers || []);
   const [activeAccordion, setActiveAccordion] = useState<string | null>('profile');
@@ -62,7 +64,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     // Sync with currentUser prop updates
     setAllowReshare(currentUser.allowReshare !== false);
     setAllowPhoneNumberVisibility(currentUser.allowPhoneNumberVisibility !== false);
-  }, [currentUser?.allowReshare, currentUser?.allowPhoneNumberVisibility]);
+    setReadReceipts(currentUser.readReceipts !== false);
+  }, [currentUser?.allowReshare, currentUser?.allowPhoneNumberVisibility, currentUser?.readReceipts]);
 
   useEffect(() => {
     const clean = username.trim().toLowerCase().replace(/^@/, '');
@@ -88,8 +91,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     return () => clearTimeout(timer);
   }, [username, currentUser.id, currentUser.username]);
 
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-  const wallpaperDropdownRef = React.useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const wallpaperDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -125,14 +128,18 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
         bio: bio.trim(),
         avatar: selectedAvatar,
         wallpaper: selectedWallpaper,
-        appColor: selectedAppColor,
+        appColor: 'sapphire',
         glassOpacity: glassOpacity,
         allowReshare: allowReshare,
         allowPhoneNumberVisibility: allowPhoneNumberVisibility,
+        readReceipts: readReceipts,
         statusPrivacy: statusPrivacy,
         statusAllowedUsers: statusAllowedUsers
       });
       setSavedSuccess(true);
+      if (onShowSuccessModal) {
+        onShowSuccessModal('profile', 'Profile Updated Successfully!', 'Your profile details and preferences are now saved.');
+      }
       setTimeout(() => setSavedSuccess(false), 2000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to update profile.');
@@ -145,7 +152,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-3 select-none">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 flex items-center justify-center text-white text-xl ring-2 ring-red-500/40 shadow-md">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white text-xl ring-2 ring-blue-500/40 shadow-md">
               {selectedAvatar}
             </div>
             <div>
@@ -166,7 +173,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
         {/* Error / Success Toast */}
         {errorMessage && (
-          <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-xs text-rose-200 flex items-center gap-2 animate-in fade-in">
+          <div className="p-3 rounded-xl bg-indigo-950/80 border border-indigo-500/50 text-xs text-indigo-200 flex items-center gap-2 animate-in fade-in">
             <span className="text-base">⚠️</span>
             <span>{errorMessage}</span>
           </div>
@@ -197,7 +204,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full h-11 px-3.5 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+                    className="w-full h-11 px-3.5 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     required
                   />
                 </div>
@@ -208,7 +215,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     <label className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">Username</label>
                     {isCheckingUsername && <span className="text-[10px] text-amber-400 font-medium animate-pulse">Checking...</span>}
                     {!isCheckingUsername && usernameStatus.available === true && username.toLowerCase() !== currentUser.username.toLowerCase() && <span className="text-[10px] text-emerald-400 font-bold">Available</span>}
-                    {!isCheckingUsername && usernameStatus.available === false && <span className="text-[10px] text-rose-400 font-bold">Taken</span>}
+                    {!isCheckingUsername && usernameStatus.available === false && <span className="text-[10px] text-indigo-400 font-bold">Taken</span>}
                   </div>
                   <div className="relative">
                     <span className="absolute left-3.5 top-3 text-xs text-slate-400">@</span>
@@ -273,7 +280,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       onClick={() => setSelectedAvatar(emoji)}
                       className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all cursor-pointer ${
                         selectedAvatar === emoji
-                          ? 'bg-red-600/30 border border-red-500 scale-105 shadow-md'
+                          ? 'bg-blue-600/30 border border-blue-500 scale-105 shadow-md'
                           : 'hover:bg-white/5'
                       }`}
                     >
@@ -285,72 +292,40 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             )}
           </div>
 
-          {/* SECTION: 🎨 ENTIRE APP COLOR THEME SELECTOR (5 Classic & 5 Neon) */}
-          <div className="space-y-2">
-            <label className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">Entire App Color Theme (5 Classic & 5 Neon)</label>
-            <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
-              <div className="space-y-1">
-                <p className="text-[10px] uppercase font-bold text-slate-300">Classic Colors</p>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {APP_COLOR_OPTIONS.filter(c => c.category === 'classic').map((color) => {
-                    const isSelected = selectedAppColor === color.id;
-                    return (
-                      <button
-                        key={color.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAppColor(color.id);
-                          onUpdateUser({ appColor: color.id });
-                        }}
-                        className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer border relative ${
-                          isSelected
-                            ? 'bg-white/25 border-white ring-2 ring-red-500 scale-105 shadow-md'
-                            : 'bg-black/30 border-white/10 hover:bg-white/10'
-                        }`}
-                        title={color.name}
-                      >
-                        <span className="text-lg">{color.icon}</span>
-                        <span className="text-[8px] font-bold text-white truncate w-full text-center mt-0.5">{color.name.split(' ')[0]}</span>
-                        {isSelected && (
-                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-[8px] text-white flex items-center justify-center">✓</span>
-                        )}
-                      </button>
-                    );
-                  })}
+          {/* ACCORDION 3: 🖼️ WALLPAPER BACKGROUND */}
+          <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/[0.01]">
+            <button
+              type="button"
+              onClick={() => setActiveAccordion(activeAccordion === 'wallpaper' ? null : 'wallpaper')}
+              className="w-full px-4 py-3 flex items-center justify-between text-left font-bold text-xs uppercase tracking-wider text-slate-200 bg-white/[0.03] hover:bg-white/[0.06] transition-all select-none"
+            >
+              <span className="flex items-center gap-2">
+                <span>🖼️</span> Chat Wallpaper Background
+              </span>
+              <span>{activeAccordion === 'wallpaper' ? '▲' : '▼'}</span>
+            </button>
+            
+            {activeAccordion === 'wallpaper' && (
+              <div className="p-4 border-t border-white/5 animate-in slide-in-from-top-1 duration-100 space-y-2">
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-1">
+                  {WALLPAPER_OPTIONS.map((wp) => (
+                    <button
+                      key={wp.id}
+                      type="button"
+                      onClick={() => setSelectedWallpaper(wp.id)}
+                      className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                        selectedWallpaper === wp.id
+                          ? 'border-blue-500 bg-blue-500/20 text-white ring-1 ring-blue-500'
+                          : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-lg ${wp.class} border border-white/20 shrink-0`} />
+                      <span className="truncate">{wp.name}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
-
-              <div className="space-y-1 pt-1">
-                <p className="text-[10px] uppercase font-bold text-cyan-400">Neon Glow Colors</p>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {APP_COLOR_OPTIONS.filter(c => c.category === 'neon').map((color) => {
-                    const isSelected = selectedAppColor === color.id;
-                    return (
-                      <button
-                        key={color.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAppColor(color.id);
-                          onUpdateUser({ appColor: color.id });
-                        }}
-                        className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer border relative ${
-                          isSelected
-                            ? 'bg-white/20 border-cyan-400 ring-2 ring-cyan-400 scale-105 shadow-[0_0_12px_rgba(0,242,254,0.5)]'
-                            : 'bg-black/40 border-white/10 hover:bg-white/10'
-                        }`}
-                        title={color.name}
-                      >
-                        <span className="text-lg">{color.icon}</span>
-                        <span className="text-[8px] font-bold text-cyan-200 truncate w-full text-center mt-0.5">{color.name.split(' ')[1] || color.name}</span>
-                        {isSelected && (
-                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-cyan-500 text-[8px] text-slate-950 font-bold flex items-center justify-center">✓</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* SECTION: 🪞 MIRROR GLASS OPACITY */}
@@ -372,7 +347,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                   setGlassOpacity(val);
                   onUpdateUser({ glassOpacity: val });
                 }}
-                className="w-full accent-red-500 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer"
+                className="w-full accent-blue-500 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer"
               />
             </div>
           </div>
@@ -402,7 +377,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                   <select
                     value={statusPrivacy}
                     onChange={(e) => setStatusPrivacy(e.target.value as any)}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white outline-none focus:border-red-500"
+                    className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white outline-none focus:border-blue-500"
                   >
                     <option value="everyone">Everyone</option>
                     <option value="contacts">Contacts Only</option>
@@ -417,7 +392,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                         return (
                           <div 
                             key={user.id} 
-                            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${isSelected ? 'bg-red-500/20 border-red-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}
+                            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${isSelected ? 'bg-blue-500/20 border-blue-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}
                             onClick={() => {
                               if (isSelected) {
                                 setStatusAllowedUsers(prev => prev.filter(id => id !== user.id));
@@ -432,7 +407,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                             <div className="flex-1 min-w-0">
                               <p className="text-[10px] font-bold text-white truncate">{user.fullName}</p>
                             </div>
-                            <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isSelected ? 'bg-red-500 border-red-500' : 'border-slate-500'}`}>
+                            <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-500'}`}>
                               {isSelected && <span className="text-[8px] text-white">✓</span>}
                             </div>
                           </div>
@@ -452,7 +427,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     type="button"
                     onClick={() => setAllowReshare(!allowReshare)}
                     className="w-12 h-6 rounded-full transition-all relative cursor-pointer focus:outline-none"
-                    style={{ backgroundColor: allowReshare ? '#dc2626' : '#374151' }}
+                    style={{ backgroundColor: allowReshare ? '#2563eb' : '#374151' }}
                   >
                     <span 
                       className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
@@ -471,11 +446,30 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     type="button"
                     onClick={() => setAllowPhoneNumberVisibility(!allowPhoneNumberVisibility)}
                     className="w-12 h-6 rounded-full transition-all relative cursor-pointer focus:outline-none"
-                    style={{ backgroundColor: allowPhoneNumberVisibility ? '#dc2626' : '#374151' }}
+                    style={{ backgroundColor: allowPhoneNumberVisibility ? '#2563eb' : '#374151' }}
                   >
                     <span 
                       className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
                       style={{ left: allowPhoneNumberVisibility ? '24px' : '4px' }}
+                    />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                  <div className="pr-2 text-left">
+                    <h5 className="text-xs font-bold text-slate-200">Read Receipts</h5>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                      Show blue ticks to let people know when you've read their messages.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReadReceipts(!readReceipts)}
+                    className="w-12 h-6 rounded-full transition-all relative cursor-pointer focus:outline-none"
+                    style={{ backgroundColor: readReceipts ? '#2563eb' : '#374151' }}
+                  >
+                    <span 
+                      className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                      style={{ left: readReceipts ? '24px' : '4px' }}
                     />
                   </button>
                 </div>
@@ -507,7 +501,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     value={passcode}
                     onChange={(e) => setPasscode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder="••••••"
-                    className="w-full h-11 px-3.5 rounded-xl mirror-glass-input border border-white/10 text-xs text-white font-mono tracking-widest focus:outline-none focus:ring-1 focus:ring-red-500"
+                    className="w-full h-11 px-3.5 rounded-xl mirror-glass-input border border-white/10 text-xs text-white font-mono tracking-widest focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                   <p className="text-[9px] text-slate-400">Provide a 6-digit pin passcode to lock this account on your browser session.</p>
                 </div>
@@ -516,11 +510,11 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
           </div>
 
           {isAdmin && (
-            <div className="rounded-2xl border border-rose-500/30 overflow-hidden bg-rose-500/5 mt-4">
+            <div className="rounded-2xl border border-indigo-500/30 overflow-hidden bg-indigo-500/5 mt-4">
               <button
                 type="button"
                 onClick={() => setActiveAccordion(activeAccordion === 'admin' ? null : 'admin')}
-                className="w-full px-4 py-3 flex items-center justify-between text-left font-bold text-xs uppercase tracking-wider text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 transition-all select-none"
+                className="w-full px-4 py-3 flex items-center justify-between text-left font-bold text-xs uppercase tracking-wider text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 transition-all select-none"
               >
                 <span className="flex items-center gap-2">
                   <span>🛡️</span> Admin Dashboard
@@ -529,9 +523,9 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               </button>
               
               {activeAccordion === 'admin' && (
-                <div className="p-4 border-t border-rose-500/20 animate-in slide-in-from-top-1 duration-100 space-y-4">
+                <div className="p-4 border-t border-indigo-500/20 animate-in slide-in-from-top-1 duration-100 space-y-4">
                   <div className="space-y-2 text-left">
-                    <label className="text-[10px] uppercase tracking-wider font-extrabold text-rose-300">Global Notification</label>
+                    <label className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-300">Global Notification</label>
                     <div className="flex gap-2">
                       <input 
                         type="text"
@@ -552,7 +546,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                           setAdminNotificationMessage('');
                           alert('Sent to all users!');
                         }}
-                        className="h-10 px-4 bg-rose-600 text-white rounded-xl text-xs font-bold"
+                        className="h-10 px-4 bg-indigo-600 text-white rounded-xl text-xs font-bold"
                       >
                         Send
                       </button>
@@ -560,7 +554,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                   </div>
 
                   <div className="space-y-2 text-left mt-4">
-                    <label className="text-[10px] uppercase tracking-wider font-extrabold text-rose-300">User Management</label>
+                    <label className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-300">User Management</label>
                     <div className="max-h-48 overflow-y-auto space-y-2 custom-scrollbar">
                       {allUsers?.filter(u => u.id !== currentUser.id).map(u => (
                         <div key={u.id} className="flex items-center justify-between bg-white/5 p-2 rounded-xl border border-white/10">
@@ -579,7 +573,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                                 alert(`Reset passcode for ${u.username}`);
                               }
                             }}
-                            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-rose-300 rounded-lg text-[9px] font-bold border border-white/5 transition-colors"
+                            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-indigo-300 rounded-lg text-[9px] font-bold border border-white/5 transition-colors"
                           >
                             Reset PIN
                           </button>
@@ -595,7 +589,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
           {/* Submit Save Button */}
           <button
             type="submit"
-            className="w-full h-11 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-md shadow-red-600/30 transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
+            className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-blue-600/30 transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
           >
             <span>{savedSuccess ? '✅ Settings Updated!' : '💾 Save Settings'}</span>
           </button>
@@ -618,21 +612,21 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               theme === 'dark'
                 ? 'bg-white/10 hover:bg-white/20 text-white'
-                : 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
             }`}
           >
             <span>{theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}</span>
           </button>
         </div>
 
-        {/* Sign Out Section */}
+        {/* Sign Out Section - Red Button */}
         <div className="pt-1">
           <button
             onClick={() => {
               onClose();
               onLogout();
             }}
-            className="w-full h-11 rounded-2xl bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/30 text-rose-300 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+            className="w-full h-11 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 border border-blue-500/40 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-98 shadow-md shadow-blue-600/30 cursor-pointer"
           >
             <span>🚪</span>
             <span>Sign Out of Account</span>

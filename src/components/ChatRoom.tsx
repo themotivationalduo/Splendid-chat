@@ -665,7 +665,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                 {/* Clear Chat */}
                 <button
                   onClick={() => { setShowClearConfirm(true); setShowOptionsDropdown(false); }}
-                  className="w-full px-4 py-2.5 flex items-center gap-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors text-xs font-bold"
+                  className="w-full px-4 py-2.5 flex items-center gap-3 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 transition-colors text-xs font-bold"
                 >
                   <span className="text-base">🗑️</span>
                   <span>Clear Chat History</span>
@@ -774,10 +774,10 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
         {/* Live Peer Typing Indicator */}
         {isPeerTyping && (
           <div className="flex items-center gap-2 p-3 rounded-2xl mirror-glass max-w-[150px] text-slate-300 animate-in fade-in">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-bounce" />
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-bounce [animation-delay:0.2s]" />
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-bounce [animation-delay:0.4s]" />
-            <span className="text-[11px] text-red-400 font-semibold ml-1">typing...</span>
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" />
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-bounce [animation-delay:0.2s]" />
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-bounce [animation-delay:0.4s]" />
+            <span className="text-[11px] text-blue-400 font-semibold ml-1">typing...</span>
           </div>
         )}
 
@@ -809,13 +809,13 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
               title="Click to jump to original message"
               className="flex items-center gap-2.5 text-slate-200 min-w-0 pr-2 cursor-pointer group/replybar flex-1 select-none"
             >
-              <div className="w-7 h-7 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center text-sm shrink-0 group-hover/replybar:scale-105 transition-transform">
+              <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-sm shrink-0 group-hover/replybar:scale-105 transition-transform">
                 ↩️
               </div>
               
               <div className="flex flex-col min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-red-400 text-[11px] truncate">Replying to {replyingTo.senderName}</span>
+                  <span className="font-bold text-blue-400 text-[11px] truncate">Replying to {replyingTo.senderName}</span>
                   <span className="text-[9px] opacity-60 group-hover/replybar:opacity-100 text-slate-300 flex items-center gap-0.5">
                     <span>Jump</span>
                     <span>⤴</span>
@@ -1044,7 +1044,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                   }}
                   className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-200 transition-all active:scale-95"
                 >
-                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-red-600 to-rose-500 flex items-center justify-center text-xl text-white shadow-md shadow-red-600/30">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-xl text-white shadow-md shadow-blue-600/30">
                     🎤
                   </div>
                   <span className="text-[11px] font-semibold">24h Voice Note</span>
@@ -1167,9 +1167,9 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
       {/* Clear Chat Confirmation Modal */}
       {showClearConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-red-500/30 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+          <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-blue-500/30 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex flex-col items-center text-center space-y-2">
-              <div className="w-16 h-16 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center text-3xl shadow-inner mb-2">
+              <div className="w-16 h-16 rounded-2xl bg-blue-500/20 text-blue-500 flex items-center justify-center text-3xl shadow-inner mb-2">
                 🗑️
               </div>
               <h3 className="text-xl font-bold text-white">Clear entire chat?</h3>
@@ -1186,7 +1186,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
               </button>
               <button
                 onClick={handleClearChat}
-                className="py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-sm shadow-lg shadow-red-600/30 transition-all active:scale-95"
+                className="py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-blue-600/30 transition-all active:scale-95"
               >
                 Clear All
               </button>
@@ -1328,9 +1328,9 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
       {/* Delete Confirmation Modal */}
       {messageToDelete && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 mirror-glass backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-rose-500/30 shadow-2xl space-y-5 animate-in zoom-in-95 duration-75">
+          <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-indigo-500/30 shadow-2xl space-y-5 animate-in zoom-in-95 duration-75">
             <div className="flex flex-col items-center text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-2xl mb-2">
+              <div className="w-12 h-12 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-2xl mb-2">
                 ⚠️
               </div>
               <h3 className="text-lg font-bold text-white">Delete Message?</h3>
@@ -1352,7 +1352,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                   }
                   setMessageToDelete(null);
                 }}
-                className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm shadow-md shadow-rose-600/30 transition-all"
+                className="py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-md shadow-indigo-600/30 transition-all"
               >
                 Delete
               </button>

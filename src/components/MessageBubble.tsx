@@ -1,4 +1,5 @@
 import React from 'react';
+import { Check, CheckCheck, Clock } from 'lucide-react';
 import { Message, User } from '../types';
 import { AudioVoicePlayer } from './AudioVoicePlayer';
 
@@ -124,7 +125,7 @@ export const MessageBubble = React.memo(({
         
         {/* Forwarded Header Banner */}
         {msg.isForwarded && (
-          <div className="flex items-center gap-1 text-[9px] text-red-300 font-semibold mb-1 opacity-90">
+          <div className="flex items-center gap-1 text-[9px] text-blue-300 font-semibold mb-1 opacity-90">
             <span>↗️</span>
             <span>Forwarded {msg.forwardedFrom ? `from ${msg.forwardedFrom}` : ''}</span>
           </div>
@@ -144,7 +145,7 @@ export const MessageBubble = React.memo(({
                 ? isUser ? 'bg-black/30 border-amber-400 text-white/95' : 'bg-amber-950/30 border-amber-400 text-slate-200 shadow-sm'
                 : repliedMedia?.isStatus
                 ? isUser ? 'bg-black/30 border-emerald-400 text-white/95' : 'bg-emerald-950/30 border-emerald-400 text-slate-200 shadow-sm'
-                : isUser ? 'bg-black/25 border-white/70 text-white/90' : 'bg-white/5 border-red-500 text-slate-300'
+                : isUser ? 'bg-black/25 border-white/70 text-white/90' : 'bg-white/5 border-blue-500 text-slate-300'
             }`}
           >
             <div className="flex items-center justify-between gap-2">
@@ -158,7 +159,7 @@ export const MessageBubble = React.memo(({
                       ? 'text-amber-300'
                       : repliedMedia?.isStatus
                       ? 'text-emerald-300'
-                      : 'text-red-300'
+                      : 'text-blue-300'
                   }`}>
                     {msg.replyTo.senderName}
                   </span>
@@ -331,7 +332,7 @@ export const MessageBubble = React.memo(({
                   onClick={() => onToggleReaction(msg.id, emoji)}
                   className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 border transition-all active:scale-95 ${
                     userReacted
-                      ? 'bg-red-500/30 border-red-400 text-white shadow-sm'
+                      ? 'bg-blue-500/30 border-blue-400 text-white shadow-sm'
                       : 'bg-black/40 border-white/15 text-slate-300 hover:bg-black/60'
                   }`}
                 >
@@ -345,11 +346,50 @@ export const MessageBubble = React.memo(({
 
         {/* Bubble Footer (Time & Read Receipts) */}
         <div
-          className={`flex items-center justify-end gap-1 mt-1 text-[9px] select-none ${
+          className={`flex items-center justify-end gap-1.5 mt-1 text-[9px] select-none ${
             isUser ? 'text-white/80' : 'text-slate-400'
           }`}
         >
           <span>{msg.timestamp}</span>
+          {isUser && (() => {
+            const isRead = msg.status === 'read';
+            const isDelivered = msg.status === 'delivered';
+            const isPending = msg.status === 'sending' || msg.status === 'pending' || (!isRead && typeof navigator !== 'undefined' && !navigator.onLine);
+            
+            const myReadReceipts = currentUser.readReceipts !== false;
+            const peerReadReceipts = chat?.participant?.readReceipts !== false;
+            const shouldShowBlueTicks = myReadReceipts && peerReadReceipts;
+
+            if (isRead) {
+              return (
+                <span className="inline-flex items-center ml-0.5" title="Read / Viewed">
+                  <CheckCheck className={`w-3.5 h-3.5 stroke-[2.5] ${shouldShowBlueTicks ? 'text-sky-400' : (isUser ? 'text-white/80' : 'text-slate-400')}`} />
+                </span>
+              );
+            }
+            
+            if (isDelivered) {
+              return (
+                <span className="inline-flex items-center ml-0.5" title="Delivered">
+                  <CheckCheck className={`w-3.5 h-3.5 stroke-[2.5] ${isUser ? 'text-white/80' : 'text-slate-400'}`} />
+                </span>
+              );
+            }
+
+            if (isPending) {
+              return (
+                <span className="inline-flex items-center ml-0.5" title="Not sent (offline / pending)">
+                  <Clock className={`w-3 h-3 animate-pulse stroke-[2.5] ${isUser ? 'text-white/80' : 'text-slate-400'}`} />
+                </span>
+              );
+            }
+
+            return (
+              <span className="inline-flex items-center ml-0.5" title="Sent">
+                <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isUser ? 'text-white/80' : 'text-slate-400'}`} />
+              </span>
+            );
+          })()}
         </div>
       </div>
 

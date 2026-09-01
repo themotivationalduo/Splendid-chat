@@ -5,6 +5,8 @@ interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: User | null;
+  currentUser?: User | null;
+  onToggleBlockUser?: (userId: string) => void;
   onStartChat?: (user: User) => void;
   onStartVoiceCall?: (user: User) => void;
   onStartVideoCall?: (user: User) => void;
@@ -14,6 +16,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   isOpen,
   onClose,
   user,
+  currentUser,
+  onToggleBlockUser,
   onStartChat,
   onStartVoiceCall,
   onStartVideoCall
@@ -48,7 +52,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         {/* User Avatar & Header */}
         <div className="flex flex-col items-center text-center pt-2">
           <div className="relative mb-3">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-red-600 to-rose-700 border border-white/20 flex items-center justify-center text-4xl shadow-xl shadow-red-900/30">
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 border border-white/20 flex items-center justify-center text-4xl shadow-xl shadow-blue-900/30">
               {user.avatar || '👤'}
             </div>
             <span
@@ -77,7 +81,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           {/* Username Field */}
           <div className="flex items-center justify-between py-1">
             <div className="flex items-center gap-2.5 min-w-0">
-              <span className="text-base text-red-400 shrink-0">🏷️</span>
+              <span className="text-base text-blue-400 shrink-0">🏷️</span>
               <div className="min-w-0">
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Username</p>
                 <p className="text-xs font-bold text-slate-100 truncate">@{user.username}</p>
@@ -132,46 +136,66 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="grid grid-cols-3 gap-2 pt-1">
-          {/* Chat / Message */}
-          <button
-            id="user-profile-chat-btn"
-            onClick={() => {
-              if (onStartChat) onStartChat(user);
-              onClose();
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-gradient-to-tr from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all active:scale-95 space-y-1"
-          >
-            <span className="text-base">💬</span>
-            <span className="text-[11px]">Message</span>
-          </button>
+        {!currentUser?.blockedUsers?.includes(user.id) && (
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            {/* Chat / Message */}
+            <button
+              id="user-profile-chat-btn"
+              onClick={() => {
+                if (onStartChat) onStartChat(user);
+                onClose();
+              }}
+              className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 transition-all active:scale-95 space-y-1"
+            >
+              <span className="text-base">💬</span>
+              <span className="text-[11px]">Message</span>
+            </button>
 
-          {/* Voice Call */}
-          <button
-            id="user-profile-voice-call-btn"
-            onClick={() => {
-              if (onStartVoiceCall) onStartVoiceCall(user);
-              onClose();
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-emerald-400 hover:text-emerald-300 font-bold text-xs transition-all active:scale-95 space-y-1"
-          >
-            <span className="text-base">📞</span>
-            <span className="text-[11px]">Voice Call</span>
-          </button>
+            {/* Voice Call */}
+            <button
+              id="user-profile-voice-call-btn"
+              onClick={() => {
+                if (onStartVoiceCall) onStartVoiceCall(user);
+                onClose();
+              }}
+              className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-emerald-400 hover:text-emerald-300 font-bold text-xs transition-all active:scale-95 space-y-1"
+            >
+              <span className="text-base">📞</span>
+              <span className="text-[11px]">Voice Call</span>
+            </button>
 
-          {/* Video Call */}
-          <button
-            id="user-profile-video-call-btn"
-            onClick={() => {
-              if (onStartVideoCall) onStartVideoCall(user);
-              onClose();
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-400 hover:text-cyan-300 font-bold text-xs transition-all active:scale-95 space-y-1"
-          >
-            <span className="text-base">📹</span>
-            <span className="text-[11px]">Video Call</span>
-          </button>
-        </div>
+            {/* Video Call */}
+            <button
+              id="user-profile-video-call-btn"
+              onClick={() => {
+                if (onStartVideoCall) onStartVideoCall(user);
+                onClose();
+              }}
+              className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-400 hover:text-cyan-300 font-bold text-xs transition-all active:scale-95 space-y-1"
+            >
+              <span className="text-base">📹</span>
+              <span className="text-[11px]">Video Call</span>
+            </button>
+          </div>
+        )}
+
+        {currentUser && currentUser.id !== user.id && (
+          <div className="pt-2">
+            <button
+              onClick={() => {
+                if (onToggleBlockUser) onToggleBlockUser(user.id);
+                // We don't automatically close so they can see it changed, but maybe we should?
+              }}
+              className={`w-full py-2.5 rounded-2xl border font-bold text-xs transition-all flex items-center justify-center gap-2 ${
+                currentUser.blockedUsers?.includes(user.id)
+                  ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20'
+                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-red-400 hover:text-red-300'
+              }`}
+            >
+              <span>{currentUser.blockedUsers?.includes(user.id) ? '🚫 Unblock Contact' : '🚫 Block Contact'}</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

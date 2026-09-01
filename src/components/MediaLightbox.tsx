@@ -66,7 +66,7 @@ export const MediaLightbox: React.FC<MediaLightboxProps> = ({
           </button>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-xl text-rose-400 hover:text-rose-200 hover:bg-rose-500/20 flex items-center justify-center text-sm ml-1"
+            className="w-8 h-8 rounded-xl text-indigo-400 hover:text-indigo-200 hover:bg-indigo-500/20 flex items-center justify-center text-sm ml-1"
             title="Close"
           >
             ❌

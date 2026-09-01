@@ -51,25 +51,59 @@
     box-shadow: 0 20px 50px -4px rgba(0, 0, 0, 0.8), inset 0 1px 1px 0 rgba(255, 255, 255, 0.18);
   }
 
-  .hero-red-pill {
-    background: linear-gradient(90deg, #991b1b 0%, #e11d48 50%, #991b1b 100%);
-    box-shadow: 0 0 35px -2px rgba(225, 29, 72, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.35);
+  /* Blue Hero Accents */
+  .hero-blue-pill {
+    background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #1d4ed8 100%);
+    box-shadow: 0 0 35px -2px rgba(59, 130, 246, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.35);
   }
 
-  .avatar-red-glow {
-    box-shadow: 0 0 16px 1px rgba(244, 63, 94, 0.6);
+  .avatar-blue-glow {
+    box-shadow: 0 0 16px 1px rgba(59, 130, 246, 0.6);
+  }
+
+  .card-top-blue-pill {
+    box-shadow: 0 0 14px 2px rgba(59, 130, 246, 0.8);
+  }
+
+  .hero-blue-pill {
+    background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #1d4ed8 100%);
+    box-shadow: 0 0 35px -2px rgba(59, 130, 246, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.35);
+  }
+
+  .avatar-blue-glow {
+    box-shadow: 0 0 16px 1px rgba(59, 130, 246, 0.6);
   }
 
   .card-top-pill {
-    box-shadow: 0 0 14px 2px rgba(244, 63, 94, 0.8);
+    box-shadow: 0 0 14px 2px rgba(59, 130, 246, 0.8);
   }
 
-  .unread-red-dot {
-    box-shadow: 0 0 10px 1px rgba(244, 63, 94, 0.9);
+  .unread-blue-dot {
+    box-shadow: 0 0 10px 1px rgba(59, 130, 246, 0.9);
   }
 
-  .icon-red-glow-btn {
-    box-shadow: 0 0 16px rgba(244, 63, 94, 0.35);
+  .icon-blue-glow-btn {
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.35);
+  }
+
+  .btn-blue-action {
+    background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+    color: #ffffff;
+  }
+  .btn-blue-action:hover {
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
+  }
+
+  .btn-blue-primary {
+    background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+    color: #ffffff;
+  }
+  .btn-blue-primary:hover {
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
   }
 
   /* ==================== LIGHT MODE ==================== */
@@ -253,9 +287,9 @@ html.light {
 }
 
 /* Light Mode: Make white/slate text black on light glass surfaces, except on dark/accent buttons */
-.light-theme .text-white:not([class*="bg-red"]):not([class*="bg-rose"]):not([class*="bg-emerald"]):not([class*="bg-cyan"]):not([class*="bg-black"]):not([class*="bg-indigo"]):not([class*="bg-gradient"]):not([class*="bg-amber"]),
-.light-theme .text-slate-100:not([class*="bg-red"]):not([class*="bg-rose"]):not([class*="bg-emerald"]):not([class*="bg-cyan"]):not([class*="bg-black"]):not([class*="bg-indigo"]):not([class*="bg-gradient"]):not([class*="bg-amber"]),
-.light-theme .text-slate-200:not([class*="bg-red"]):not([class*="bg-rose"]):not([class*="bg-emerald"]):not([class*="bg-cyan"]):not([class*="bg-black"]):not([class*="bg-indigo"]):not([class*="bg-gradient"]):not([class*="bg-amber"]) {
+.light-theme .text-white:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-cyan"]):not([class*="bg-black"]):not([class*="bg-indigo"]):not([class*="bg-gradient"]):not([class*="bg-amber"]),
+.light-theme .text-slate-100:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-cyan"]):not([class*="bg-black"]):not([class*="bg-indigo"]):not([class*="bg-gradient"]):not([class*="bg-amber"]),
+.light-theme .text-slate-200:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-cyan"]):not([class*="bg-black"]):not([class*="bg-indigo"]):not([class*="bg-gradient"]):not([class*="bg-amber"]) {
   color: #000000 !important;
 }
 
@@ -382,11 +416,11 @@ button:active,
   border-radius: 1.25rem !important;
 }
 
-/* Dynamic App Theme Variables & Utility Classes */
+/* Dynamic App Theme Variables & Utility Classes (Sapphire Blue Default) */
 :root {
-  --theme-primary: #e11d48;
-  --theme-secondary: #991b1b;
-  --theme-glow: rgba(225, 29, 72, 0.45);
+  --theme-primary: #2563eb;
+  --theme-secondary: #1d4ed8;
+  --theme-glow: rgba(37, 99, 235, 0.45);
 }
 
 .theme-bg {

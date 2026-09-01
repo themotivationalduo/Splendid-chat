@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { subscribeToUsers } from '../services/firestoreService';
+import { subscribeToUsers, deleteContactUser } from '../services/firestoreService';
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface UserManagementModalProps {
   onAddNewContact: (fullName: string, username: string, phoneNumber: string, avatar: string) => void;
   onStartChatWithUser: (user: User) => void;
   onOpenUserProfile?: (user: User) => void;
+  onShowSuccessModal?: (type: 'status' | 'profile' | 'logout' | 'delete' | 'generic', title: string, subtitle?: string) => void;
 }
 
 export const UserManagementModal: React.FC<UserManagementModalProps> = ({
@@ -17,7 +18,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   currentUser,
   onAddNewContact,
   onStartChatWithUser,
-  onOpenUserProfile
+  onOpenUserProfile,
+  onShowSuccessModal
 }) => {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -26,6 +28,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newAvatar, setNewAvatar] = useState('🌟');
+  const [contactToDelete, setContactToDelete] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressTriggeredRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -42,10 +49,48 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     if (!newFullName.trim() || !newPhone.trim()) return;
 
     onAddNewContact(newFullName.trim(), newUsername.trim(), newPhone.trim(), newAvatar);
+    if (onShowSuccessModal) {
+      onShowSuccessModal('generic', 'Contact Added!', `${newFullName.trim()} has been saved to your contacts.`);
+    }
     setIsAddingNew(false);
     setNewFullName('');
     setNewUsername('');
     setNewPhone('');
+  };
+
+  const handleTouchStart = (user: User) => {
+    if (currentUser && user.id === currentUser.id) return;
+    isLongPressTriggeredRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressTriggeredRef.current = true;
+      if (navigator.vibrate) navigator.vibrate(50);
+      setContactToDelete(user);
+    }, 550);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!contactToDelete || !currentUser || isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteContactUser(contactToDelete.id, currentUser.id);
+      const name = contactToDelete.username || contactToDelete.fullName;
+      setContactToDelete(null);
+      if (onShowSuccessModal) {
+        onShowSuccessModal('delete', 'Contact Removed!', `@${name} has been removed from contacts.`);
+      }
+    } catch (err) {
+      console.error('Error deleting contact:', err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const AVATAR_OPTIONS = ['🌟', '💎', '🚀', '🔥', '⚡', '👑', '🎯', '🌸', '🦊', '👤', '🛡️', '🏆'];
@@ -61,24 +106,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/20 backdrop-blur-xl animate-in fade-in duration-75">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md animate-in fade-in duration-75">
       <div className="w-full max-w-md p-6 rounded-3xl mirror-glass-card border border-white/10 shadow-2xl space-y-4 max-h-[85vh] flex flex-col relative">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-3 select-none">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center text-xl shadow-inner">
+            <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center text-xl shadow-inner">
               👥
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-100">Contacts & Directory</h3>
-              <p className="text-xs text-slate-400">Search by username or phone number</p>
+              <p className="text-xs text-slate-400">Search • Tap-hold to delete contact</p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-white p-1 rounded-xl hover:bg-white/10 text-base"
           >
-            ❌
+            ✕
           </button>
         </div>
 
@@ -89,7 +134,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search contacts by @username, phone, or name..."
-            className="w-full h-10 pl-9 pr-8 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+            className="w-full h-10 pl-9 pr-8 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <span className="absolute left-3 top-2.5 text-xs text-slate-400">🔍</span>
           {searchQuery && (
@@ -106,24 +151,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         {!isAddingNew ? (
           <button
             onClick={() => setIsAddingNew(true)}
-            className="w-full py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-200 flex items-center justify-center gap-2 transition-all shadow-sm"
+            className="w-full py-2.5 px-4 rounded-2xl bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 text-xs font-bold text-blue-300 flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
           >
             <span>➕</span>
             <span>Add New Contact</span>
           </button>
         ) : (
-          <form onSubmit={handleAddSubmit} className="p-4 rounded-2xl mirror-glass-input border border-red-500/30 space-y-2.5 animate-in slide-in-from-top duration-75">
+          <form onSubmit={handleAddSubmit} className="p-4 rounded-2xl mirror-glass-input border border-blue-500/30 space-y-2.5 animate-in slide-in-from-top duration-75">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-red-400 flex items-center gap-1">
+              <span className="text-xs font-bold text-blue-400 flex items-center gap-1">
                 <span>✨</span>
                 <span>New Contact Info</span>
               </span>
               <button
                 type="button"
                 onClick={() => setIsAddingNew(false)}
-                className="text-xs text-slate-400 hover:text-white"
+                className="text-xs text-blue-400 hover:text-blue-300 font-semibold"
               >
-                ❌ Cancel
+                Cancel
               </button>
             </div>
 
@@ -138,7 +183,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                     onClick={() => setNewAvatar(emoji)}
                     className={`w-8 h-8 rounded-xl text-base flex items-center justify-center shrink-0 transition-all ${
                       newAvatar === emoji
-                        ? 'bg-red-600/30 border-2 border-red-500 scale-110'
+                        ? 'bg-blue-600/30 border-2 border-blue-500 scale-110'
                         : 'mirror-glass-input border border-white/10'
                     }`}
                   >
@@ -154,7 +199,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                 value={newFullName}
                 onChange={(e) => setNewFullName(e.target.value)}
                 placeholder="Full Name (e.g. John Smith)"
-                className="w-full h-10 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+                className="w-full h-10 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 required
               />
             </div>
@@ -165,7 +210,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                 placeholder="Username (e.g. jsmith)"
-                className="w-full h-10 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+                className="w-full h-10 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 required
               />
             </div>
@@ -176,14 +221,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
                 placeholder="Phone Number (e.g. +1 555 234 5678)"
-                className="w-full h-10 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+                className="w-full h-10 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 required
               />
             </div>
 
             <button
               type="submit"
-              className="w-full h-10 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-md shadow-red-600/30 transition-all flex items-center justify-center gap-1.5"
+              className="w-full h-10 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-blue-600/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <span>💾</span>
               <span>Save Contact</span>
@@ -209,14 +254,28 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               return (
                 <div
                   key={user.id}
-                  className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-2.5 cursor-pointer ${
+                  className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-2.5 cursor-pointer select-none active:scale-[0.98] ${
                     isSelf
-                      ? 'bg-red-950/20 border-red-500/30'
-                      : 'mirror-glass-input border-white/5 hover:border-white/20'
+                      ? 'bg-blue-950/20 border-blue-500/30'
+                      : 'mirror-glass-input border-white/5 hover:border-blue-500/30'
                   }`}
                   onClick={() => {
+                    if (isLongPressTriggeredRef.current) {
+                      isLongPressTriggeredRef.current = false;
+                      return;
+                    }
                     if (onOpenUserProfile) onOpenUserProfile(user);
                   }}
+                  onMouseDown={() => handleTouchStart(user)}
+                  onMouseUp={handleTouchEnd}
+                  onMouseLeave={handleTouchEnd}
+                  onTouchStart={() => handleTouchStart(user)}
+                  onTouchEnd={handleTouchEnd}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (!isSelf) setContactToDelete(user);
+                  }}
+                  title="Tap to view • Hold or right-click to delete contact"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-900 border border-white/10 flex items-center justify-center text-xl text-white shrink-0 shadow-sm">
@@ -230,11 +289,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-slate-100 truncate hover:text-red-400 transition-colors">
+                        <span className="font-bold text-xs text-slate-100 truncate hover:text-blue-400 transition-colors">
                           {displayUsername}
                         </span>
                         {isSelf && (
-                          <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[9px] font-bold">
+                          <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 text-[9px] font-bold">
                             You
                           </span>
                         )}
@@ -246,6 +305,16 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {!isSelf && (
+                      <button
+                        onClick={() => setContactToDelete(user)}
+                        className="w-8 h-8 rounded-xl bg-blue-500/10 hover:bg-blue-500/30 text-blue-400 hover:text-blue-300 border border-blue-500/20 flex items-center justify-center text-xs transition-colors"
+                        title="Delete Contact"
+                      >
+                        🗑️
+                      </button>
+                    )}
+
                     <button
                       onClick={() => {
                         if (onOpenUserProfile) onOpenUserProfile(user);
@@ -262,7 +331,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                           onStartChatWithUser(user);
                           onClose();
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-xs font-bold transition-all flex items-center gap-1"
+                        className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                         title="Send Message"
                       >
                         <span>💬</span>
@@ -275,6 +344,48 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             })
           )}
         </div>
+
+        {/* Delete Contact Confirmation Modal */}
+        {contactToDelete && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-75">
+            <div className="w-full max-w-sm p-5 rounded-3xl mirror-glass-card border border-blue-500/30 shadow-2xl space-y-4 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-blue-500/20 border border-blue-500/40 text-blue-400 flex items-center justify-center text-2xl mx-auto">
+                🗑️
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-white">Delete Contact @{contactToDelete.username}?</h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  This will remove @{contactToDelete.username} ({contactToDelete.fullName}) from your contacts directory and clear mutual private chat logs.
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setContactToDelete(null)}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isDeleting ? (
+                    <span>Deleting...</span>
+                  ) : (
+                    <>
+                      <span>🗑️</span>
+                      <span>Delete</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

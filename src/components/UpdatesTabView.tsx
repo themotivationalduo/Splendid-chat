@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { User, UserStatus, STATUS_BACKGROUND_OPTIONS, BroadcastFeed, BroadcastFeedPost, Chat } from '../types';
 import { postUserStatus, createBroadcastFeed, postToBroadcastFeed, subscribeToBroadcastFeeds, subscribeToFeedPosts, followBroadcastFeed, unfollowBroadcastFeed, reactToBroadcastFeedPost, deleteBroadcastFeedPost } from '../services/firestoreService';
 import { startRecording, stopRecording, cancelRecording, createSimulatedVoiceNote, RecordingResult } from '../services/audioService';
+import { compressImage } from '../utils/imageCompressor';
 import { ChatList } from './ChatList';
 
 const BROADCAST_EMOJIS = ['📢', '🚀', '📰', '🔥', '💡', '💬', '🏆', '🎵', '🎒', '🛡️', '🌟', '💻', '🔮', '🎉', '✈️', '🍔', '🎨', '⚡', '🍿', '🌍', '📌', '❤️', '🍿', '🏁'];
@@ -18,6 +19,7 @@ interface UpdatesTabViewProps {
   onTogglePin?: (chatId: string) => void;
   onOpenCreateGroup?: () => void;
   onOpenGroupProfile?: (chat: Chat) => void;
+  onShowSuccessModal?: (type: 'status' | 'profile' | 'logout' | 'delete' | 'generic', title: string, subtitle?: string) => void;
 }
 
 export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
@@ -31,7 +33,8 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
   onDeleteChat,
   onTogglePin,
   onOpenCreateGroup,
-  onOpenGroupProfile
+  onOpenGroupProfile,
+  onShowSuccessModal
 }) => {
   // Modal toggle states
   const [isTextModalOpen, setIsTextModalOpen] = useState(false);
@@ -44,6 +47,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
   const [textStatus, setTextStatus] = useState('');
   const [selectedBg, setSelectedBg] = useState('indigo');
   const [imageFileUrl, setImageFileUrl] = useState<string | null>(null);
+  const [isCompressingImage, setIsCompressingImage] = useState(false);
   const [voiceResult, setVoiceResult] = useState<RecordingResult | null>(null);
 
   // Search & Filter state for Broadcast Feeds and Groups
@@ -173,10 +177,13 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
       if (!creator) return false;
       const privacy = creator.statusPrivacy || "everyone";
       if (privacy === "everyone") return true;
+      if (privacy === "contacts") {
+        return chats.some(chat => !chat.isGroup && chat.participant?.id === userId);
+      }
       if (privacy === "specific") {
         return creator.statusAllowedUsers?.includes(currentUser.id);
       }
-      return true;
+      return false;
     }
   );
 
@@ -191,6 +198,9 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
       await postUserStatus(currentUser, 'text', textStatus.trim(), undefined, selectedBg, isReshareAllowed);
       setTextStatus('');
       setIsTextModalOpen(false);
+      if (onShowSuccessModal) {
+        onShowSuccessModal('status', 'Text Status Posted!', 'Your status update is visible to contacts for 24 hours.');
+      }
     } catch (err) {
       console.error('Error posting text status:', err);
     } finally {
@@ -198,18 +208,27 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
     }
   };
 
-  // Convert image to Base64
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Convert image to Base64 with automatic resizing & compression for Firestore safety
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setImageFileUrl(event.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      setIsCompressingImage(true);
+      const compressed = await compressImage(file, 1080, 1080, 0.78);
+      setImageFileUrl(compressed);
+    } catch (err) {
+      console.error('Error compressing image for status:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setImageFileUrl(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressingImage(false);
+    }
   };
 
   // Create image status
@@ -222,6 +241,9 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
       await postUserStatus(currentUser, 'image', imageFileUrl, undefined, undefined, isReshareAllowed);
       setImageFileUrl(null);
       setIsImageModalOpen(false);
+      if (onShowSuccessModal) {
+        onShowSuccessModal('status', 'Photo Status Posted!', 'Your photo is live on your status for 24 hours.');
+      }
     } catch (err) {
       console.error('Error posting image status:', err);
     } finally {
@@ -274,6 +296,9 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
         await postUserStatus(currentUser, 'voice', base64Audio, voiceResult.duration, undefined, isReshareAllowed);
         setVoiceResult(null);
         setIsVoiceModalOpen(false);
+        if (onShowSuccessModal) {
+          onShowSuccessModal('status', 'Voice Note Status Shared!', 'Your audio update is now live on your status for 24 hours.');
+        }
       };
       reader.readAsDataURL(voiceResult.audioBlob);
     } catch (err) {
@@ -295,6 +320,9 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
       setFeedAvatar('📢');
       setFeedDescription('');
       setIsCreateFeedModalOpen(false);
+      if (onShowSuccessModal) {
+        onShowSuccessModal('generic', 'Broadcast Feed Created!', `Your channel "${feedName}" is live.`);
+      }
     } catch (err) {
       console.error('Error creating broadcast feed:', err);
     } finally {
@@ -302,18 +330,23 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
     }
   };
 
-  // Convert post image to base64
-  const handleFeedPostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Convert post image to base64 with compression
+  const handleFeedPostImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setFeedImageFile(event.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file, 1080, 1080, 0.78);
+      setFeedImageFile(compressed);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setFeedImageFile(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Create Broadcast Post
@@ -325,6 +358,9 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
       await postToBroadcastFeed(currentUser, selectedFeed.id, type, content, duration);
       if (type === 'text') setFeedText('');
       if (type === 'image') setFeedImageFile(null);
+      if (onShowSuccessModal) {
+        onShowSuccessModal('status', 'Channel Update Broadcasted!', 'Your followers received this new update.');
+      }
     } catch (err) {
       console.error('Error posting to broadcast feed:', err);
     } finally {
@@ -392,7 +428,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             onClick={() => setIsSearchActive(!isSearchActive)}
             className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all text-sm cursor-pointer active:scale-90 ${
               isSearchActive 
-                ? 'bg-rose-600/30 border-rose-500/50 text-rose-300' 
+                ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300' 
                 : 'bg-white/5 hover:bg-white/10 border-white/5 text-slate-200 hover:text-white'
             }`}
             title="Search channels & groups"
@@ -432,7 +468,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             <span className="text-slate-600">•</span>
             <button
               onClick={() => setIsTextModalOpen(true)}
-              className="text-[11px] font-bold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer transition-colors"
+              className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer transition-colors"
             >
               <span>✏️</span>
               <span>Write</span>
@@ -441,7 +477,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
         </div>
 
         {/* Horizontal Status Cards Carousel */}
-        <div className="flex items-center gap-3 overflow-x-auto pb-2 pt-0.5 px-0.5 custom-scrollbar snap-x select-none">
+        <div className="flex items-center gap-2.5 overflow-x-auto pb-2 pt-0.5 px-0.5 custom-scrollbar snap-x select-none">
           
           {/* 1. MY STATUS CARD ("Add status") */}
           <div
@@ -452,7 +488,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                 setIsTextModalOpen(true);
               }
             }}
-            className="relative shrink-0 w-[105px] h-[168px] rounded-[22px] overflow-hidden border border-white/10 bg-gradient-to-b from-[#1c222e] via-[#141822] to-[#0d1017] shadow-xl flex flex-col justify-between p-3 cursor-pointer group snap-start transition-all hover:scale-[1.02] active:scale-[0.98]"
+            className="relative shrink-0 w-[84px] h-[135px] rounded-[18px] overflow-hidden border border-white/10 bg-gradient-to-b from-[#1c222e] via-[#141822] to-[#0d1017] shadow-xl flex flex-col justify-between p-2.5 cursor-pointer group snap-start transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
             {/* Background preview for my active status if exists */}
             {myStatuses.length > 0 && myStatuses[0].type === 'image' && (
@@ -470,8 +506,8 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80 pointer-events-none" />
 
             {/* Upper / Center User Avatar with white plus badge */}
-            <div className="relative z-10 mx-auto mt-2.5">
-              <div className="relative w-13 h-13 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-white/20 flex items-center justify-center text-2xl shadow-lg">
+            <div className="relative z-10 mx-auto mt-1.5">
+              <div className="relative w-10 h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-white/20 flex items-center justify-center text-lg shadow-lg">
                 <span>{currentUser.avatar || '👤'}</span>
                 
                 {/* Plus (+) white badge on bottom-right of avatar */}
@@ -480,7 +516,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                     e.stopPropagation();
                     setIsTextModalOpen(true);
                   }}
-                  className="absolute -bottom-1 -right-1 w-5.5 h-5.5 rounded-full bg-white text-slate-950 font-black flex items-center justify-center text-xs shadow-md border border-slate-300 hover:scale-110 active:scale-95 transition-transform"
+                  className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white text-slate-950 font-black flex items-center justify-center text-[9px] shadow-md border border-slate-300 hover:scale-110 active:scale-95 transition-transform"
                   title="Add new status"
                 >
                   +
@@ -495,11 +531,11 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
 
             {/* Bottom Label */}
             <div className="relative z-10 text-center pb-0.5">
-              <p className="text-[12px] font-extrabold text-white tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+              <p className="text-[10px] font-extrabold text-white tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                 {myStatuses.length > 0 ? 'My status' : 'Add status'}
               </p>
               {myStatuses.length > 0 && (
-                <p className="text-[9px] text-emerald-400 font-bold">
+                <p className="text-[8px] text-emerald-400 font-bold">
                   {myStatuses.length} {myStatuses.length === 1 ? 'update' : 'updates'}
                 </p>
               )}
@@ -517,7 +553,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
               <div
                 key={userId}
                 onClick={() => onOpenStatusViewer(userId, statuses)}
-                className="relative shrink-0 w-[105px] h-[168px] rounded-[22px] overflow-hidden border border-white/10 bg-gradient-to-b from-[#1a1f2c] via-[#121620] to-[#0a0d14] shadow-xl flex flex-col justify-between p-3 cursor-pointer group snap-start transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="relative shrink-0 w-[84px] h-[135px] rounded-[18px] overflow-hidden border border-white/10 bg-gradient-to-b from-[#1a1f2c] via-[#121620] to-[#0a0d14] shadow-xl flex flex-col justify-between p-2.5 cursor-pointer group snap-start transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 {/* Background Image / Gradient Preview */}
                 {mostRecent.type === 'image' && (
@@ -528,13 +564,13 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                   />
                 )}
                 {mostRecent.type === 'text' && (
-                  <div className={`absolute inset-0 bg-gradient-to-br ${STATUS_BACKGROUND_OPTIONS.find(b => b.id === mostRecent.backgroundColor)?.class || 'from-rose-900 to-indigo-950'} opacity-65 flex items-center justify-center p-2 text-[9px] font-bold text-white/80 text-center select-none overflow-hidden`}>
-                    <p className="line-clamp-4 leading-tight">{mostRecent.content}</p>
+                  <div className={`absolute inset-0 bg-gradient-to-br ${STATUS_BACKGROUND_OPTIONS.find(b => b.id === mostRecent.backgroundColor)?.class || 'from-indigo-900 to-indigo-950'} opacity-65 flex items-center justify-center p-1.5 text-[8px] font-bold text-white/80 text-center select-none overflow-hidden`}>
+                    <p className="line-clamp-3 leading-tight">{mostRecent.content}</p>
                   </div>
                 )}
                 {mostRecent.type === 'voice' && (
                   <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 via-teal-950 to-slate-950 opacity-70 flex items-center justify-center">
-                    <span className="text-3xl opacity-30">🎙️</span>
+                    <span className="text-2xl opacity-30">🎙️</span>
                   </div>
                 )}
 
@@ -542,15 +578,15 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                 <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/90 pointer-events-none" />
 
                 {/* Top Center: Circular Avatar with Emerald-Green Border Ring */}
-                <div className="relative z-10 mx-auto mt-2">
-                  <div className="relative w-12 h-12 rounded-full p-[2px] bg-gradient-to-tr from-emerald-400 to-green-500 shadow-md">
-                    <div className="w-full h-full rounded-full bg-slate-900 border border-slate-950 flex items-center justify-center text-xl overflow-hidden">
+                <div className="relative z-10 mx-auto mt-1.5">
+                  <div className="relative w-9.5 h-9.5 rounded-full p-[1.5px] bg-gradient-to-tr from-emerald-400 to-green-500 shadow-md">
+                    <div className="w-full h-full rounded-full bg-slate-900 border border-slate-950 flex items-center justify-center text-base overflow-hidden">
                       <span>{avatar || '👤'}</span>
                     </div>
 
                     {/* Multiple Updates Counter badge */}
                     {statuses.length > 1 && (
-                      <span className="absolute -top-1 -right-1 px-1 py-0.2 rounded-full bg-emerald-500 text-slate-950 font-black text-[8px] shadow">
+                      <span className="absolute -top-1 -right-1 px-1 py-0.2 rounded-full bg-emerald-500 text-slate-950 font-black text-[7px] shadow">
                         {statuses.length}
                       </span>
                     )}
@@ -559,7 +595,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
 
                 {/* Bottom Center: Display Name */}
                 <div className="relative z-10 text-center pb-0.5">
-                  <p className="text-[11px] font-extrabold text-white tracking-tight line-clamp-2 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] leading-tight px-0.5">
+                  <p className="text-[9.5px] font-extrabold text-white tracking-tight line-clamp-2 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] leading-tight px-0.5">
                     {displayName}
                   </p>
                 </div>
@@ -569,10 +605,10 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
 
           {/* Empty state hint if no other contact statuses */}
           {otherUsersStatuses.length === 0 && (
-            <div className="shrink-0 flex items-center justify-center px-4 py-6 rounded-[22px] border border-dashed border-white/10 bg-white/[0.01] text-center text-slate-400 text-xs space-y-1">
+            <div className="shrink-0 flex items-center justify-center px-3 py-5 rounded-[18px] border border-dashed border-white/10 bg-white/[0.01] text-center text-slate-400 text-[11px] space-y-1">
               <div>
-                <p className="text-sm font-semibold text-slate-300">No new status</p>
-                <p className="text-[10px] text-slate-500">Tap + to share yours</p>
+                <p className="text-xs font-semibold text-slate-300">No new status</p>
+                <p className="text-[9px] text-slate-500">Tap + to share yours</p>
               </div>
             </div>
           )}
@@ -607,7 +643,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             </button>
             <button
               onClick={() => setIsCreateFeedModalOpen(true)}
-              className="px-3 py-1 rounded-full bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/30 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+              className="px-3 py-1 rounded-full bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/30 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95"
             >
               <span>➕</span>
               <span>Create</span>
@@ -623,7 +659,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search Broadcast Feeds, Channels & Groups..."
-              className="w-full pl-10 pr-9 py-2.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.07] focus:bg-white/[0.08] border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500/50 transition-all font-medium"
+              className="w-full pl-10 pr-9 py-2.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.07] focus:bg-white/[0.08] border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 transition-all font-medium"
             />
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
               🔍
@@ -644,7 +680,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
               onClick={() => setActiveFilter('all')}
               className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeFilter === 'all'
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
                   : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
               }`}
             >
@@ -655,7 +691,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
               onClick={() => setActiveFilter('feeds')}
               className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 ${
                 activeFilter === 'feeds'
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
                   : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
               }`}
             >
@@ -667,7 +703,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
               onClick={() => setActiveFilter('groups')}
               className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1 ${
                 activeFilter === 'groups'
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
                   : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
               }`}
             >
@@ -700,7 +736,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             <div className="flex items-center justify-center gap-2 pt-1">
               <button
                 onClick={() => setIsCreateFeedModalOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
               >
                 📢 New Feed
               </button>
@@ -719,7 +755,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             {activeFilter !== 'groups' && filteredBroadcastFeeds.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
                     <span>📢</span>
                     <span>Broadcast Feeds</span>
                   </h3>
@@ -745,11 +781,11 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <h4 className="text-sm font-extrabold text-slate-100 group-hover:text-rose-400 transition-colors truncate">
+                              <h4 className="text-sm font-extrabold text-slate-100 group-hover:text-indigo-400 transition-colors truncate">
                                 {feed.name}
                               </h4>
                               {isCreator && (
-                                <span className="px-1.5 py-0.2 rounded bg-rose-600/20 border border-rose-500/30 text-rose-300 text-[9px] font-black uppercase">
+                                <span className="px-1.5 py-0.2 rounded bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 text-[9px] font-black uppercase">
                                   Owner
                                 </span>
                               )}
@@ -798,13 +834,13 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             {activeFilter !== 'feeds' && filteredGroups.length > 0 && (
               <div className="space-y-2 pt-2 border-t border-white/10">
                 <div className="flex items-center justify-between px-1">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
                     <span>👥</span>
                     <span>Group Channels</span>
                   </h3>
                   <button
                     onClick={() => onOpenCreateGroup && onOpenCreateGroup()}
-                    className="text-[11px] font-bold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                    className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer"
                   >
                     <span>➕ New Group</span>
                   </button>
@@ -919,7 +955,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/15 shadow-2xl space-y-4 text-center"
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-rose-400 uppercase tracking-wider">Create Text Status</h3>
+              <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wider">Create Text Status</h3>
               <button 
                 type="button" 
                 onClick={() => setIsTextModalOpen(false)} 
@@ -955,7 +991,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                     type="button"
                     onClick={() => setSelectedBg(bg.id)}
                     className={`w-7 h-7 rounded-full bg-gradient-to-tr ${bg.class} border transition-all flex items-center justify-center relative active:scale-90 cursor-pointer ${
-                      selectedBg === bg.id ? 'border-white scale-110 ring-2 ring-rose-500' : 'border-white/20 hover:scale-105'
+                      selectedBg === bg.id ? 'border-white scale-110 ring-2 ring-indigo-500' : 'border-white/20 hover:scale-105'
                     }`}
                     title={bg.name}
                   >
@@ -975,7 +1011,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || !textStatus.trim()}
-              className="w-full h-11 rounded-2xl hero-red-pill text-white font-extrabold text-xs shadow-lg shadow-rose-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full h-11 rounded-2xl hero-blue-pill text-white font-extrabold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               {isSubmitting ? 'Posting status...' : '🚀 Post Text Status'}
             </button>
@@ -988,21 +1024,27 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md animate-in fade-in duration-75">
           <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/15 shadow-2xl space-y-4 text-center">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-rose-400 uppercase tracking-wider">Post Image Status</h3>
+              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider">Post Image Status</h3>
               <button 
                 type="button" 
                 onClick={() => {
                   setImageFileUrl(null);
                   setIsImageModalOpen(false);
                 }} 
-                className="text-slate-400 hover:text-slate-200 text-xs font-bold"
+                className="text-blue-400 hover:text-blue-300 text-xs font-bold px-2 py-1 rounded-lg hover:bg-blue-500/10 transition-colors"
               >
                 Cancel
               </button>
             </div>
 
-            {!imageFileUrl ? (
-              <div className="border-2 border-dashed border-white/10 rounded-2xl p-6 hover:border-rose-500/40 transition-colors flex flex-col items-center justify-center gap-3 relative cursor-pointer group">
+            {isCompressingImage ? (
+              <div className="py-10 flex flex-col items-center justify-center gap-3">
+                <div className="w-9 h-9 rounded-full border-3 border-blue-500 border-t-transparent animate-spin" />
+                <p className="text-xs font-bold text-blue-300">Optimizing & compressing image...</p>
+                <p className="text-[10px] text-slate-400">Fits Firestore limits smoothly</p>
+              </div>
+            ) : !imageFileUrl ? (
+              <div className="border-2 border-dashed border-white/15 rounded-2xl p-6 hover:border-blue-500/50 transition-colors flex flex-col items-center justify-center gap-3 relative cursor-pointer group">
                 <input
                   type="file"
                   accept="image/*"
@@ -1010,8 +1052,8 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />
                 <span className="text-3xl">🖼️</span>
-                <p className="text-xs font-bold text-slate-300">Tap to upload / choose image</p>
-                <p className="text-[10px] text-slate-500">Supports PNG, JPG, WebP</p>
+                <p className="text-xs font-bold text-slate-200">Tap to upload / choose image</p>
+                <p className="text-[10px] text-slate-400">Auto-compressed for instant upload</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -1020,7 +1062,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setImageFileUrl(null)}
-                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center text-xs"
+                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-blue-600/80 hover:bg-blue-600 text-white flex items-center justify-center text-xs transition-colors"
                   >
                     ✕
                   </button>
@@ -1028,9 +1070,16 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                 <button
                   onClick={handlePostImageStatus}
                   disabled={isSubmitting}
-                  className="w-full h-11 rounded-2xl hero-red-pill text-white font-extrabold text-xs shadow-lg transition-all cursor-pointer"
+                  className="w-full h-11 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg shadow-blue-600/30 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  {isSubmitting ? 'Posting status...' : '🚀 Publish Photo'}
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      <span>Posting photo...</span>
+                    </>
+                  ) : (
+                    '🚀 Publish Photo'
+                  )}
                 </button>
               </div>
             )}
@@ -1043,7 +1092,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md animate-in fade-in duration-75">
           <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/15 shadow-2xl space-y-4 text-center">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-rose-400 uppercase tracking-wider">Record Voice Status</h3>
+              <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-wider">Record Voice Status</h3>
               <button 
                 type="button" 
                 onClick={() => {
@@ -1058,9 +1107,9 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
 
             {!voiceResult ? (
               <div className="py-6 flex flex-col items-center justify-center gap-4">
-                <div className="w-20 h-20 rounded-full bg-rose-600/10 border border-rose-500/30 flex items-center justify-center text-3xl shadow-lg relative">
+                <div className="w-20 h-20 rounded-full bg-indigo-600/10 border border-indigo-500/30 flex items-center justify-center text-3xl shadow-lg relative">
                   {isRecording && (
-                    <span className="absolute inset-0 rounded-full bg-rose-500/20 border border-rose-500 animate-ping" />
+                    <span className="absolute inset-0 rounded-full bg-indigo-500/20 border border-indigo-500 animate-ping" />
                   )}
                   🎙️
                 </div>
@@ -1070,7 +1119,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                     {isRecording ? 'Now Recording...' : 'Tap below to record status'}
                   </p>
                   {isRecording && (
-                    <p className="text-[11px] text-rose-400 font-mono">
+                    <p className="text-[11px] text-indigo-400 font-mono">
                       {recordingSeconds} seconds recorded
                     </p>
                   )}
@@ -1087,7 +1136,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                     <>
                       <button
                         onClick={handleStartVoiceRecord}
-                        className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs cursor-pointer shadow"
+                        className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer shadow"
                       >
                         Start Recording
                       </button>
@@ -1139,7 +1188,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                   <button
                     onClick={handlePostVoiceStatus}
                     disabled={isSubmitting}
-                    className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-bold text-xs cursor-pointer"
+                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs cursor-pointer"
                   >
                     {isSubmitting ? 'Posting...' : '🚀 Post Voice Status'}
                   </button>
@@ -1158,7 +1207,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/15 shadow-2xl space-y-4 text-left"
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-extrabold text-rose-400 uppercase tracking-wider">Create Broadcast Feed</h3>
+              <h3 className="text-sm font-extrabold text-indigo-400 uppercase tracking-wider">Create Broadcast Feed</h3>
               <button 
                 type="button" 
                 onClick={() => setIsCreateFeedModalOpen(false)} 
@@ -1179,7 +1228,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                       onClick={() => setFeedAvatar(emoji)}
                       className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-xl cursor-pointer transition-all border ${
                         feedAvatar === emoji 
-                          ? 'bg-rose-600/30 border-rose-500 scale-110' 
+                          ? 'bg-indigo-600/30 border-indigo-500 scale-110' 
                           : 'bg-white/5 border-white/10 hover:bg-white/12'
                       }`}
                     >
@@ -1197,7 +1246,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                   value={feedName}
                   onChange={(e) => setFeedName(e.target.value)}
                   placeholder="e.g., EarnAds/HashCash, Crypto, Tech Insights"
-                  className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:ring-1 focus:ring-rose-500 font-bold"
+                  className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold"
                 />
               </div>
 
@@ -1208,7 +1257,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                   onChange={(e) => setFeedDescription(e.target.value)}
                   placeholder="What is this channel about? Only you can post here."
                   rows={3}
-                  className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:ring-1 focus:ring-rose-500 resize-none leading-relaxed font-semibold"
+                  className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none leading-relaxed font-semibold"
                 />
               </div>
             </div>
@@ -1216,7 +1265,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || !feedName.trim()}
-              className="w-full h-11 rounded-2xl hero-red-pill text-white font-extrabold text-xs shadow-lg shadow-rose-600/20 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center"
+              className="w-full h-11 rounded-2xl hero-blue-pill text-white font-extrabold text-xs shadow-lg shadow-indigo-600/20 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center"
             >
               {isSubmitting ? 'Creating...' : '🚀 Create Feed'}
             </button>
@@ -1258,14 +1307,14 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                     }}
                     className={`px-2.5 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wide transition-all cursor-pointer ${
                       selectedFeed.followers?.includes(currentUser.id)
-                        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20'
+                        ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/20'
                         : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
                     }`}
                   >
                     {selectedFeed.followers?.includes(currentUser.id) ? 'Unfollow' : 'Follow'}
                   </button>
                 ) : (
-                  <span className="text-[9px] font-extrabold uppercase px-2 py-1 rounded-lg bg-rose-600/20 text-rose-400 border border-rose-500/30">
+                  <span className="text-[9px] font-extrabold uppercase px-2 py-1 rounded-lg bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
                     👑 Owner
                   </span>
                 )}
@@ -1294,7 +1343,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                   <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 bg-slate-950/20">
                     <span className="text-4xl animate-bounce">🔒</span>
                     <div className="space-y-1">
-                      <h4 className="text-xs font-extrabold text-slate-200 uppercase tracking-wider text-rose-400">Content Locked</h4>
+                      <h4 className="text-xs font-extrabold text-slate-200 uppercase tracking-wider text-indigo-400">Content Locked</h4>
                       <p className="text-xs text-slate-300 max-w-[280px] mx-auto leading-relaxed">
                         Follow <strong>@{selectedFeed.creatorName}</strong>'s Broadcast Feed to view updates, browse media, and react with emojis.
                       </p>
@@ -1356,7 +1405,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                                     setReactingPostId(null);
                                   }}
                                   className={`w-7 h-7 flex items-center justify-center text-sm rounded-full hover:bg-white/10 active:scale-125 transition-transform cursor-pointer ${
-                                    hasReacted ? 'bg-rose-500/25 border border-rose-500/30' : ''
+                                    hasReacted ? 'bg-indigo-500/25 border border-indigo-500/30' : ''
                                   }`}
                                 >
                                   {emoji}
@@ -1436,7 +1485,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                                     }}
                                     className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold flex items-center gap-1 transition-all cursor-pointer border ${
                                       hasUserReacted 
-                                        ? 'bg-rose-500/20 border-rose-500 text-rose-200 shadow' 
+                                        ? 'bg-indigo-500/20 border-indigo-500 text-indigo-200 shadow' 
                                         : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
                                     }`}
                                   >
@@ -1484,7 +1533,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                           </div>
                           <button 
                             onClick={() => setFeedImageFile(null)}
-                            className="text-rose-400 hover:text-rose-300 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/10"
+                            className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/10"
                           >
                             Remove
                           </button>
@@ -1531,7 +1580,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                             value={feedText}
                             onChange={(e) => setFeedText(e.target.value)}
                             placeholder="Type broadcast update..."
-                            className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-rose-500 font-bold"
+                            className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold"
                           />
                         </div>
 
@@ -1545,7 +1594,7 @@ export const UpdatesTabView: React.FC<UpdatesTabViewProps> = ({
                             }
                           }}
                           disabled={isSubmitting || (!feedText.trim() && !feedImageFile)}
-                          className="w-9 h-9 rounded-xl bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center text-xs cursor-pointer shrink-0 transition-all active:scale-90 disabled:opacity-50"
+                          className="w-9 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center text-xs cursor-pointer shrink-0 transition-all active:scale-90 disabled:opacity-50"
                         >
                           <span>➡️</span>
                         </button>

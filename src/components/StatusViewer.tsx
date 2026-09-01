@@ -399,7 +399,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
         {/* Floating Success / Action Toast */}
         {toastMessage && (
           <div className="absolute top-20 inset-x-0 z-30 flex justify-center px-4 pointer-events-none animate-in slide-in-from-top-2 fade-in duration-100">
-            <div className="px-4 py-2 rounded-full bg-black/80 border border-red-500/50 backdrop-blur-xl shadow-2xl text-xs font-bold text-white flex items-center gap-2">
+            <div className="px-4 py-2 rounded-full bg-black/80 border border-blue-500/50 backdrop-blur-xl shadow-2xl text-xs font-bold text-white flex items-center gap-2">
               <span>{toastMessage}</span>
             </div>
           </div>
@@ -414,7 +414,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
             return (
               <div key={idx} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-red-500 rounded-full transition-all duration-75 ease-linear"
+                  className="h-full bg-blue-500 rounded-full transition-all duration-75 ease-linear"
                   style={{ width: `${widthPct}%` }}
                 />
               </div>
@@ -469,7 +469,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                 onClick={handleLike}
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-xs transition-all border shadow-sm ${
                   hasLiked 
-                    ? 'bg-red-500/25 text-red-400 border-red-500/50' 
+                    ? 'bg-blue-500/25 text-blue-400 border-blue-500/50' 
                     : 'bg-white/10 hover:bg-white/20 text-slate-200 border-white/10'
                 }`}
                 title={hasLiked ? 'Unlike' : 'Like'}
@@ -495,7 +495,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                 e.stopPropagation();
                 onClose();
               }}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-red-500/40 text-slate-200 hover:text-white flex items-center justify-center transition-all border border-white/10 text-xs active:scale-90"
+              className="w-8 h-8 rounded-full bg-white/10 hover:bg-blue-500/40 text-slate-200 hover:text-white flex items-center justify-center transition-all border border-white/10 text-xs active:scale-90"
               title="Close Status"
             >
               ✕
@@ -517,7 +517,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
           {currentStatus.type === 'text' && (
             <div className={`absolute inset-0 bg-gradient-to-tr ${getGradientBackground(currentStatus)} flex items-center justify-center p-6 text-center`}>
               <div className="max-w-md p-6 rounded-3xl bg-white/10 border border-white/15 backdrop-blur-2xl shadow-2xl space-y-4">
-                <p className="text-xl md:text-2xl font-extrabold text-white leading-relaxed whitespace-pre-wrap select-text selection:bg-red-500/40">
+                <p className="text-xl md:text-2xl font-extrabold text-white leading-relaxed whitespace-pre-wrap select-text selection:bg-blue-500/40">
                   {currentStatus.content}
                 </p>
               </div>
@@ -540,7 +540,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
           {currentStatus.type === 'voice' && (
             <div className={`absolute inset-0 bg-gradient-to-br ${getGradientBackground(currentStatus)} flex items-center justify-center p-6 text-center`}>
               <div className="w-full max-w-sm p-6 rounded-3xl bg-white/10 border border-white/15 backdrop-blur-2xl shadow-2xl flex flex-col items-center space-y-5 select-none">
-                <div className="w-20 h-20 rounded-full bg-red-600/20 border border-red-500/40 flex items-center justify-center text-4xl shadow-xl animate-pulse">
+                <div className="w-20 h-20 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-4xl shadow-xl animate-pulse">
                   🎙️
                 </div>
                 <div className="space-y-1">
@@ -554,7 +554,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                     return (
                       <span 
                         key={i} 
-                        className="w-1 rounded-full bg-red-500 transition-all duration-100"
+                        className="w-1 rounded-full bg-blue-500 transition-all duration-100"
                         style={{ height: `${randomHeight}px` }}
                       />
                     );
@@ -584,7 +584,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
               </button>
               <button 
                 onClick={handleDelete} 
-                className="w-full p-3 rounded-2xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-semibold flex items-center justify-center gap-2 border border-red-500/30 transition-all active:scale-95"
+                className="w-full p-3 rounded-2xl bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 font-semibold flex items-center justify-center gap-2 border border-blue-500/30 transition-all active:scale-95"
               >
                 🗑️ Delete Status
               </button>
@@ -607,7 +607,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
             <div className="p-4 flex items-center justify-between border-b border-white/5">
               <h4 className="font-bold text-slate-200 flex gap-4 text-xs md:text-sm">
                 <span>👁️ {viewsCount} Viewed</span>
-                <span className="text-red-400">❤️ {likesCount} Liked</span>
+                <span className="text-blue-400">❤️ {likesCount} Liked</span>
               </h4>
               <button 
                 onClick={closeMenus} 
@@ -627,7 +627,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                     <p className="text-[10px] text-slate-500 truncate">@{u.username}</p>
                   </div>
                   {currentStatus.likes?.includes(u.id) && (
-                    <span className="text-red-500 text-lg mr-2 animate-in zoom-in-50">❤️</span>
+                    <span className="text-blue-500 text-lg mr-2 animate-in zoom-in-50">❤️</span>
                   )}
                 </div>
               ))}
@@ -666,7 +666,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                   <button
                     type="button"
                     onClick={() => onReshareStatus(currentStatus)}
-                    className="px-2.5 h-8 rounded-full bg-red-600 hover:bg-red-500 text-white font-bold text-[9px] tracking-wider uppercase flex items-center gap-1 transition-all shrink-0 shadow-md shadow-red-600/30"
+                    className="px-2.5 h-8 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-[9px] tracking-wider uppercase flex items-center gap-1 transition-all shrink-0 shadow-md shadow-blue-600/30"
                     title="Reshare Status"
                   >
                     <span>🔄 Reshare</span>
@@ -698,7 +698,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                       }
                     }}
                     placeholder={`Reply to ${currentStatus.userFullName}...`}
-                    className="w-full h-10 px-4 pr-10 rounded-full bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs focus:outline-none focus:border-red-500/80 focus:ring-1 focus:ring-red-500/50 backdrop-blur-xl shadow-inner transition-all"
+                    className="w-full h-10 px-4 pr-10 rounded-full bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs focus:outline-none focus:border-blue-500/80 focus:ring-1 focus:ring-blue-500/50 backdrop-blur-xl shadow-inner transition-all"
                   />
                   {replyText && (
                     <button
@@ -716,7 +716,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                   disabled={!replyText.trim() || isSendingReply}
                   className={`h-10 px-4 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 transition-all duration-75 shadow-lg ${
                     replyText.trim() && !isSendingReply
-                      ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30 cursor-pointer active:scale-95'
+                      ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 cursor-pointer active:scale-95'
                       : 'bg-white/10 text-slate-500 border border-white/10 cursor-not-allowed'
                   }`}
                 >
@@ -740,7 +740,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                 className="px-4 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-white font-bold text-xs flex items-center gap-2 transition-all backdrop-blur-xl shadow-lg active:scale-95"
               >
                 <span>👁️ {viewsCount} Views</span>
-                {likesCount > 0 && <span className="text-red-400">❤️ {likesCount}</span>}
+                {likesCount > 0 && <span className="text-blue-400">❤️ {likesCount}</span>}
               </button>
 
               <div className="flex items-center gap-2">
@@ -754,7 +754,7 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
                 <button
                   type="button"
                   onClick={handleDelete}
-                  className="px-3.5 h-10 rounded-full bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95"
+                  className="px-3.5 h-10 rounded-full bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-400 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95"
                 >
                   <span>🗑️ Delete</span>
                 </button>

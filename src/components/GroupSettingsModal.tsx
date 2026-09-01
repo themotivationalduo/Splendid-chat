@@ -10,8 +10,21 @@ import {
   removeGroupAdmin,
   removeMemberFromGroup
 } from '../services/firestoreService';
-import data from '@emoji-mart/data';
-import Picker from '@emoji-mart/react';
+
+const AVATAR_EMOJI_CATEGORIES = [
+  {
+    name: 'Popular & Tech',
+    emojis: ['👥', '🚀', '💬', '🎉', '🌟', '💼', '🔥', '🏆', '🍕', '💻', '⚡', '💎', '🎮', '🎧', '📱', '🤖']
+  },
+  {
+    name: 'Smileys & Expressions',
+    emojis: ['😀', '😎', '🤩', '🥳', '🤓', '😇', '🤠', '😍', '🤔', '🙌', '🤝', '💪', '✨', '🎯', '💯', '❤️']
+  },
+  {
+    name: 'Work & Creative',
+    emojis: ['💡', '📊', '📈', '🎨', '🎬', '📚', '🔬', '✈️', '🌍', '🏠', '☕', '🍻', '⚽', '🏀', '🎵', '🛡️']
+  }
+];
 
 interface GroupSettingsModalProps {
   isOpen: boolean;
@@ -82,11 +95,11 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
     }
   };
 
-  const handleUpdateAvatar = async (emoji: any) => {
+  const handleUpdateAvatar = async (emojiChar: string) => {
     setShowEmojiPicker(false);
     setIsUpdating(true);
     try {
-      await updateGroupAvatar(chat.id, emoji.native);
+      await updateGroupAvatar(chat.id, emojiChar);
       onChatUpdated();
     } catch (e) {
       console.error('Error updating group avatar:', e);
@@ -153,39 +166,63 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/20 backdrop-blur-md animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md animate-fade-in">
       <div className="w-full max-w-md mirror-glass-input border border-white/10 rounded-3xl p-6 shadow-2xl space-y-5 text-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar">
         
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="w-12 h-12 rounded-2xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-2xl">
+              <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-2xl">
                 {chat.avatar || '👥'}
               </div>
               {isAdmin && (
                 <button
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white text-[10px] flex items-center justify-center shadow-lg hover:bg-red-500 transition-colors"
+                  className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center shadow-lg hover:bg-blue-500 transition-colors cursor-pointer"
                 >
                   ✏️
                 </button>
               )}
               {showEmojiPicker && (
-                <div className="absolute top-14 left-0 z-50 shadow-2xl animate-in fade-in zoom-in-95 duration-75">
-                  <Picker
-                    data={data}
-                    onEmojiSelect={handleUpdateAvatar}
-                    theme={document.documentElement.classList.contains('light') ? 'light' : 'dark'}
-                    previewPosition="none"
-                    skinTonePosition="none"
-                  />
+                <div className="absolute top-14 left-0 z-50 w-72 p-3 rounded-2xl mirror-glass-card border border-white/15 shadow-2xl space-y-3 animate-in fade-in zoom-in-95 duration-75">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                    <span className="text-[11px] font-bold text-slate-200">Choose Group Icon</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowEmojiPicker(false)}
+                      className="text-xs text-slate-400 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2.5">
+                    {AVATAR_EMOJI_CATEGORIES.map((cat) => (
+                      <div key={cat.name} className="space-y-1">
+                        <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold px-1">
+                          {cat.name}
+                        </div>
+                        <div className="grid grid-cols-6 gap-1.5">
+                          {cat.emojis.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => handleUpdateAvatar(emoji)}
+                              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/15 flex items-center justify-center text-base hover:scale-110 transition-all cursor-pointer"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-white">{chat.name}</h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold">
                   Group
                 </span>
               </div>
@@ -194,7 +231,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors text-sm"
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors text-sm cursor-pointer"
           >
             ✕
           </button>
@@ -208,7 +245,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
               {!isEditingName ? (
                 <button
                   onClick={() => setIsEditingName(true)}
-                  className="text-red-400 hover:text-red-300 font-bold"
+                  className="text-blue-400 hover:text-blue-300 font-bold"
                 >
                   Edit Name
                 </button>
@@ -223,7 +260,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
                   <button
                     onClick={handleSaveName}
                     disabled={isUpdating}
-                    className="text-red-400 font-bold hover:text-red-300"
+                    className="text-blue-400 font-bold hover:text-blue-300"
                   >
                     Save
                   </button>
@@ -236,7 +273,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
                 type="text"
                 value={groupName}
                 onChange={e => setGroupName(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white focus:outline-none focus:border-red-500"
+                className="w-full h-10 px-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500"
               />
             ) : (
               <div className="text-sm font-bold text-white">{chat.name}</div>
@@ -252,7 +289,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
               !isEditingDescription ? (
                 <button
                   onClick={() => setIsEditingDescription(true)}
-                  className="text-red-400 hover:text-red-300 font-bold"
+                  className="text-blue-400 hover:text-blue-300 font-bold"
                 >
                   Edit
                 </button>
@@ -267,7 +304,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
                   <button
                     onClick={handleSaveDescription}
                     disabled={isUpdating}
-                    className="text-red-400 font-bold hover:text-red-300"
+                    className="text-blue-400 font-bold hover:text-blue-300"
                   >
                     Save
                   </button>
@@ -280,7 +317,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
             <textarea
               value={groupDescription}
               onChange={e => setGroupDescription(e.target.value)}
-              className="w-full min-h-[80px] p-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white focus:outline-none focus:border-red-500 resize-none"
+              className="w-full min-h-[80px] p-3 rounded-xl mirror-glass-input border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
               placeholder="What's this group about?"
             />
           ) : (
@@ -334,7 +371,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
                             className={`px-2 py-0.5 rounded-full text-[9px] font-bold border transition-colors ${
                               isUserAdmin 
                                 ? 'bg-white/10 border-white/20 text-slate-300 hover:bg-white/20' 
-                                : 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
+                                : 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
                             }`}
                           >
                             {isUserAdmin ? 'Remove Admin' : 'Make Admin'}
@@ -346,7 +383,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
                           <button
                             onClick={() => handleKickMember(user.id)}
                             disabled={isUpdating}
-                            className="px-2 py-0.5 rounded-full text-[9px] font-bold border border-red-500/30 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors"
+                            className="px-2 py-0.5 rounded-full text-[9px] font-bold border border-blue-500/30 bg-blue-500/20 text-blue-300 hover:bg-blue-500/40 transition-colors"
                           >
                             Kick
                           </button>
@@ -377,7 +414,7 @@ export const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
               type="button"
               onClick={handleDelete}
               disabled={isUpdating}
-              className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-xs font-bold text-red-400 transition-all flex items-center justify-center gap-1.5"
+              className="flex-1 py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-xs font-bold text-blue-400 transition-all flex items-center justify-center gap-1.5"
             >
               <span>🗑️</span>
               <span>Delete Group</span>

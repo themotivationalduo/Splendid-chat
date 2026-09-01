@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Chat } from '../types';
 import { playGlassChimeSound } from '../services/audioService';
 import { sendCallSignal, subscribeToCallSignals } from '../services/firestoreService';
@@ -24,8 +24,8 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isCameraOff, setIsCameraOff] = useState(false);
-  const peerConnection = React.useRef<RTCPeerConnection | null>(null);
-  const localStream = React.useRef<MediaStream | null>(null);
+  const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const localStream = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (!chat || status !== 'accepted') return;
@@ -120,7 +120,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
              <video id="remoteVideo" autoPlay playsInline className="w-32 h-32 rounded-full object-cover border-2 border-emerald-500/40" />
           ) : (
             <div className="relative">
-              <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-red-500/40 flex items-center justify-center text-5xl shadow-2xl animate-pulse">
+              <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-blue-500/40 flex items-center justify-center text-5xl shadow-2xl animate-pulse">
                 {chat.avatar || '👤'}
               </div>
               <span className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#121418] flex items-center justify-center text-xs">
@@ -145,7 +145,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               onClick={() => setIsMuted(!isMuted)}
               className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl transition-all shadow-md ${
                 isMuted
-                  ? 'bg-rose-600/30 border border-rose-500 text-rose-300'
+                  ? 'bg-indigo-600/30 border border-indigo-500 text-indigo-300'
                   : 'bg-white/10 hover:bg-white/15 border border-white/10 text-slate-200'
               }`}
               title="Mute microphone"
@@ -159,7 +159,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
                 onClick={() => setIsCameraOff(!isCameraOff)}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl transition-all shadow-md ${
                   isCameraOff
-                    ? 'bg-rose-600/30 border border-rose-500 text-rose-300'
+                    ? 'bg-indigo-600/30 border border-indigo-500 text-indigo-300'
                     : 'bg-white/10 hover:bg-white/15 border border-white/10 text-slate-200'
                 }`}
                 title="Toggle camera"
@@ -173,7 +173,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               onClick={() => setIsSpeakerOn(!isSpeakerOn)}
               className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl transition-all shadow-md ${
                 isSpeakerOn
-                  ? 'bg-red-600/20 border border-red-500/40 text-red-300'
+                  ? 'bg-blue-600/20 border border-blue-500/40 text-blue-300'
                   : 'bg-white/10 hover:bg-white/15 border border-white/10 text-slate-200'
               }`}
               title="Speakerphone"
@@ -185,7 +185,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
           {/* End Call Button */}
           <button
             onClick={handleEnd}
-            className="w-full h-12 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-sm shadow-xl shadow-red-600/40 flex items-center justify-center gap-2 transition-all active:scale-98"
+            className="w-full h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-blue-600/40 flex items-center justify-center gap-2 transition-all active:scale-98"
           >
             <span className="text-lg">📵</span>
             <span>End Call</span>

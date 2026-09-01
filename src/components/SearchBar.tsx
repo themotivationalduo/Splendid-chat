@@ -19,7 +19,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     <div className="w-full px-3 pt-2 pb-1">
       <div className="max-w-md mx-auto relative flex items-center">
         {/* Left Search Emoji with soft red glow */}
-        <div className="absolute left-4 pointer-events-none text-rose-500 text-base select-none">
+        <div className="absolute left-4 pointer-events-none text-indigo-500 text-base select-none">
           🔍
         </div>
 
@@ -29,7 +29,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full h-12 pl-12 pr-12 rounded-full bg-[#11131b]/90 border border-white/10 text-slate-100 placeholder-slate-400/90 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-rose-500/60 focus:border-rose-500/60 transition-all backdrop-blur-xl shadow-inner"
+          className="w-full h-12 pl-12 pr-12 rounded-full bg-[#11131b]/90 border border-white/10 text-slate-100 placeholder-slate-400/90 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500/60 focus:border-indigo-500/60 transition-all backdrop-blur-xl shadow-inner"
         />
 
         {/* Right Action: Clear if query exists, or Microphone Emoji matching screenshot */}
@@ -46,7 +46,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             <button
               type="button"
               onClick={onVoiceClick}
-              className="p-1.5 rounded-full text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all text-base active:scale-95 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
+              className="p-1.5 rounded-full text-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all text-base active:scale-95 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
               title="Voice Search / Dictate"
             >
               🎙️

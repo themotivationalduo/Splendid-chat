@@ -75,7 +75,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
         {/* Message Preview Box */}
         <div className="p-3 rounded-2xl bg-black/40 border border-white/10 space-y-1.5 shrink-0">
-          <div className="flex items-center justify-between text-[11px] text-red-400 font-semibold">
+          <div className="flex items-center justify-between text-[11px] text-blue-400 font-semibold">
             <span>Original message by {message.senderName}</span>
             <span className="text-[10px] text-slate-400">{message.timestamp}</span>
           </div>
@@ -109,7 +109,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search conversations..."
-            className="w-full h-10 pl-9 pr-4 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-red-500/50"
+            className="w-full h-10 pl-9 pr-4 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
           />
           <span className="absolute left-3 top-2.5 text-xs text-slate-400">🔍</span>
         </div>
@@ -130,7 +130,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
                   onClick={() => toggleSelect(dest.id)}
                   className={`flex items-center justify-between p-2.5 rounded-2xl cursor-pointer transition-all border ${
                     isSelected
-                      ? 'bg-red-500/20 border-red-500/50 text-white shadow-sm'
+                      ? 'bg-blue-500/20 border-blue-500/50 text-white shadow-sm'
                       : 'bg-white/[0.03] border-white/5 hover:bg-white/10 text-slate-300'
                   }`}
                 >
@@ -146,7 +146,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
                   <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all ${
                     isSelected
-                      ? 'bg-red-600 border-red-500 text-white text-xs'
+                      ? 'bg-blue-600 border-blue-500 text-white text-xs'
                       : 'border-white/20 bg-black/20'
                   }`}>
                     {isSelected && '✓'}
@@ -166,7 +166,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
             id="submit-forward-btn"
             disabled={selectedChatIds.length === 0}
             onClick={handleConfirmForward}
-            className="px-5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-red-600/30 transition-all active:scale-95 flex items-center gap-1.5"
+            className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition-all active:scale-95 flex items-center gap-1.5"
           >
             <span>Forward</span>
             <span>↗️</span>

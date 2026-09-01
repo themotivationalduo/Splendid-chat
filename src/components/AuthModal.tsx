@@ -9,13 +9,15 @@ interface AuthModalProps {
   onClose?: () => void;
   onLoginSuccess: (user: User) => void;
   isMandatory?: boolean;
+  onShowSuccessModal?: (type: 'status' | 'profile' | 'logout' | 'delete' | 'generic', title: string, subtitle?: string) => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   onLoginSuccess,
-  isMandatory = false
+  isMandatory = false,
+  onShowSuccessModal
 }) => {
   const [isRegister, setIsRegister] = useState(false);
   
@@ -123,6 +125,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (res.success && res.user) {
           playGlassChimeSound('sent');
           setSuccessMessage('Account registered successfully!');
+          if (onShowSuccessModal) {
+            onShowSuccessModal('profile', 'Account Registered!', `Welcome to SPLENDID CHAT, @${res.user.username}!`);
+          }
           setTimeout(() => {
             onLoginSuccess(res.user!);
             if (onClose) onClose();
@@ -156,6 +161,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (res.success && res.user) {
           playGlassChimeSound('sent');
           setSuccessMessage('Welcome back!');
+          if (onShowSuccessModal) {
+            onShowSuccessModal('generic', 'Welcome Back!', `Signed in as @${res.user.username}`);
+          }
           setTimeout(() => {
             onLoginSuccess(res.user!);
             if (onClose) onClose();
@@ -171,22 +179,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/20 backdrop-blur-xl animate-in fade-in duration-75">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xl animate-in fade-in duration-75">
       <div className="w-full max-w-md p-6 rounded-3xl mirror-glass-card border border-white/15 shadow-2xl space-y-5 text-slate-100 relative max-h-[90vh] overflow-y-auto custom-scrollbar">
         {/* Subtle background glow effect */}
-        <div className="absolute -top-20 -right-20 w-48 h-48 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-rose-600/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-20 -right-20 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
         {/* Header Branding */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-red-600 to-rose-600 flex items-center justify-center text-2xl shadow-lg shadow-red-600/30 border border-white/20">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-2xl shadow-lg shadow-blue-600/30 border border-white/20">
               💬
             </div>
             <div>
               <h2 className="text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">
                 <span>SPLENDID CHAT</span>
-                <span className="text-red-500 text-xs">✨</span>
+                <span className="text-blue-400 text-xs">✨</span>
               </h2>
               <p className="text-xs text-slate-400">
                 {isRegister ? 'Create your personal account' : 'Sign in with your phone number'}
@@ -197,9 +205,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {!isMandatory && onClose && (
             <button
               onClick={onClose}
-              className="p-1.5 text-lg rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+              className="p-1.5 text-sm rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
             >
-              ❌
+              ✕
             </button>
           )}
         </div>
@@ -212,9 +220,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               setIsRegister(false);
               setErrorMessage(null);
             }}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               !isRegister
-                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -227,9 +235,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               setIsRegister(true);
               setErrorMessage(null);
             }}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               isRegister
-                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -240,7 +248,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Error / Success Messages */}
         {errorMessage && (
-          <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-xs text-red-200 flex items-center gap-2 animate-in fade-in">
+          <div className="p-3 rounded-xl bg-blue-950/60 border border-blue-500/40 text-xs text-blue-200 flex items-center gap-2 animate-in fade-in">
             <span className="text-base">⚠️</span>
             <span>{errorMessage}</span>
           </div>
@@ -268,7 +276,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Sarah Connor"
-                  className="w-full h-11 px-4 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all"
+                  className="w-full h-11 px-4 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
                   required
                 />
               </div>
@@ -291,7 +299,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </span>
                   )}
                   {!isCheckingUsername && usernameStatus.available === false && (
-                    <span className="text-[10px] text-rose-400 font-bold flex items-center gap-1">
+                    <span className="text-[10px] text-indigo-400 font-bold flex items-center gap-1">
                       <span>✕</span> Username Taken
                     </span>
                   )}
@@ -306,22 +314,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     placeholder="sarah_c"
                     className={`w-full h-11 pl-8 pr-9 rounded-xl mirror-glass-input border text-xs text-white placeholder-slate-500 focus:outline-none transition-all ${
                       usernameStatus.available === false
-                        ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500 bg-rose-950/20'
+                        ? 'border-indigo-500/80 focus:ring-1 focus:ring-indigo-500 bg-indigo-950/20'
                         : usernameStatus.available === true
                         ? 'border-emerald-500/80 focus:ring-1 focus:ring-emerald-500 bg-emerald-950/20'
-                        : 'border-white/10 focus:ring-1 focus:ring-red-500'
+                        : 'border-white/10 focus:ring-1 focus:ring-blue-500'
                     }`}
                     required
                   />
                   <div className="absolute right-3 text-xs">
                     {isCheckingUsername && <span className="animate-spin text-amber-400">⏳</span>}
                     {!isCheckingUsername && usernameStatus.available === true && <span className="text-emerald-400 font-bold">✓</span>}
-                    {!isCheckingUsername && usernameStatus.available === false && <span className="text-rose-400 font-bold">✕</span>}
+                    {!isCheckingUsername && usernameStatus.available === false && <span className="text-indigo-400 font-bold">✕</span>}
                   </div>
                 </div>
 
                 {usernameStatus.message && (
-                  <p className={`text-[10px] font-semibold pl-1 ${usernameStatus.available ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <p className={`text-[10px] font-semibold pl-1 ${usernameStatus.available ? 'text-emerald-400' : 'text-indigo-400'}`}>
                     {usernameStatus.message}
                   </p>
                 )}
@@ -341,7 +349,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       onClick={() => setSelectedAvatar(emoji)}
                       className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center shrink-0 transition-all ${
                         selectedAvatar === emoji
-                          ? 'bg-red-600/30 border-2 border-red-500 scale-110'
+                          ? 'bg-blue-600/30 border-2 border-blue-500 scale-110'
                           : 'mirror-glass-input border border-white/10 hover:bg-white/10'
                       }`}
                     >
@@ -363,7 +371,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCountryPickerOpen(true)}
-                className="text-[11px] text-red-400 hover:text-red-300 underline font-medium flex items-center gap-1"
+                className="text-[11px] text-blue-400 hover:text-blue-300 underline font-medium flex items-center gap-1"
               >
                 <span>🔍 Search Country</span>
               </button>
@@ -373,7 +381,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCountryPickerOpen(true)}
-                className="h-11 px-3 rounded-xl mirror-glass-input border border-white/10 hover:bg-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-red-500 transition-all flex items-center justify-between gap-1.5 shrink-0 cursor-pointer min-w-[125px]"
+                className="h-11 px-3 rounded-xl mirror-glass-input border border-white/10 hover:bg-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all flex items-center justify-between gap-1.5 shrink-0 cursor-pointer min-w-[125px]"
                 title="Click to search country"
               >
                 <span className="flex items-center gap-1.5 truncate">
@@ -389,7 +397,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9 ]/g, ''))}
                 placeholder="801 234 5678"
-                className="flex-1 h-11 px-4 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all"
+                className="flex-1 h-11 px-4 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
                 required
               />
             </div>
@@ -430,7 +438,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     value={countrySearchQuery}
                     onChange={(e) => setCountrySearchQuery(e.target.value)}
                     placeholder="Type to search (e.g. Nigeria, +234, US)..."
-                    className="w-full h-10 pl-9 pr-8 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                    className="w-full h-10 pl-9 pr-8 rounded-xl mirror-glass-input border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     autoFocus
                   />
                   {countrySearchQuery && (
@@ -466,7 +474,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                           }}
                           className={`w-full p-2.5 rounded-xl flex items-center justify-between text-left text-xs transition-all ${
                             isSelected
-                              ? 'bg-red-600/30 border border-red-500/60 text-white font-bold'
+                              ? 'bg-blue-600/30 border border-blue-500/60 text-white font-bold'
                               : 'hover:bg-white/10 text-slate-200'
                           }`}
                         >
@@ -474,11 +482,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             <span className="text-lg shrink-0">{c.flag}</span>
                             <div className="truncate">
                               <span className="font-semibold block truncate text-slate-100">{c.name}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">Code Name: <span className="text-red-300 font-bold">{c.code}</span></span>
+                              <span className="text-[10px] text-slate-400 font-mono">Code Name: <span className="text-blue-300 font-bold">{c.code}</span></span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="font-bold text-red-400">{c.dialCode}</span>
+                            <span className="font-bold text-blue-400">{c.dialCode}</span>
                             {isSelected && <span className="text-emerald-400 font-bold">✓</span>}
                           </div>
                         </button>
@@ -510,7 +518,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               value={passcode}
               onChange={(e) => handlePasscodeChange(e.target.value)}
               placeholder="••••••"
-              className="w-full h-11 px-4 text-center tracking-[0.6em] font-mono text-base font-bold rounded-xl mirror-glass-input border border-white/10 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all"
+              className="w-full h-11 px-4 text-center tracking-[0.6em] font-mono text-base font-bold rounded-xl mirror-glass-input border border-white/10 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
               required
             />
 
@@ -521,7 +529,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   key={idx}
                   className={`w-3 h-3 rounded-full transition-all duration-75 ${
                     idx < passcode.length
-                      ? 'bg-red-500 scale-110 shadow-sm shadow-red-500'
+                      ? 'bg-blue-500 scale-110 shadow-sm shadow-blue-500'
                       : 'bg-white/15 border border-white/10'
                   }`}
                 />
@@ -531,7 +539,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="flex justify-end pt-1">
               <a 
                 href="sms:+2348082076038?body=Hello%20Splenzzy%2C%20I%20have%20forgotten%20my%20passcode.%20Please%20help%20me%20reset%20it."
-                className="text-[10px] text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
               >
                 Forgot Passcode?
               </a>
@@ -542,7 +550,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="submit"
             disabled={isLoading || passcode.length !== 6}
-            className="w-full h-12 mt-2 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full h-12 mt-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 transition-all active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
           >
             {isLoading ? (
               <span className="animate-spin text-sm">⏳</span>

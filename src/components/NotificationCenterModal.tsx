@@ -46,6 +46,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
   const [expandedBatchIds, setExpandedBatchIds] = useState<Record<string, boolean>>({});
+  const [selectedFullNotification, setSelectedFullNotification] = useState<AggregatedNotificationBatch | null>(null);
 
   // 30-second window batching mechanism
   const batchedNotifications = useMemo(() => {
@@ -168,14 +169,14 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-3 select-none">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center text-xl shadow-inner">
+            <div className="w-10 h-10 rounded-2xl bg-blue-500/15 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xl shadow-inner">
               🔔
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <span>Push Notification Center</span>
                 {totalUnreadCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-extrabold shadow-sm shadow-red-600/40">
+                  <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-extrabold shadow-sm shadow-blue-600/40">
                     {totalUnreadCount} New
                   </span>
                 )}
@@ -209,7 +210,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           {permissionStatus !== 'granted' ? (
             <button
               onClick={handleRequestPermission}
-              className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-md shadow-red-600/30 active:scale-95"
+              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/30 active:scale-95"
             >
               Enable
             </button>
@@ -234,7 +235,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           <button
             onClick={onClearAll}
             disabled={notifications.length === 0}
-            className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 disabled:opacity-40 transition-colors font-medium cursor-pointer"
+            className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 disabled:opacity-40 transition-colors font-medium cursor-pointer"
           >
             <span>🗑️</span>
             <span>Clear list</span>
@@ -265,18 +266,18 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                   }}
                   className={`p-3.5 rounded-2xl border transition-all cursor-pointer select-none relative group ${
                     !batch.isRead
-                      ? 'mirror-glass-input border-red-500/40 text-white shadow-md shadow-red-500/10'
+                      ? 'mirror-glass-input border-blue-500/40 text-white shadow-md shadow-blue-500/10'
                       : 'mirror-glass-input border-white/10 text-slate-300 hover:border-white/20'
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     {/* Avatar with batch count pill */}
                     <div className="relative shrink-0 mt-0.5">
-                      <div className="w-9 h-9 rounded-2xl bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center text-sm font-bold shadow-inner">
+                      <div className="w-9 h-9 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center text-sm font-bold shadow-inner">
                         {batch.avatar || (batch.type === 'call' ? '📞' : batch.type === 'system' ? '⚙️' : '💬')}
                       </div>
                       {isMulti && (
-                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-600 border border-[#090b0f] text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-lg">
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-blue-600 border border-[#090b0f] text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-lg">
                           {batch.count}
                         </span>
                       )}
@@ -290,7 +291,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                             {batch.title}
                           </span>
                           {isMulti && (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 shrink-0">
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 shrink-0">
                               {batch.count} messages
                             </span>
                           )}
@@ -333,12 +334,12 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                             <button
                               type="button"
                               onClick={(e) => toggleExpand(batch.id, e)}
-                              className="text-[10px] text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 transition-colors"
+                              className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 transition-colors"
                             >
                               <span>{isExpanded ? '▴ Hide details' : `▾ View all ${batch.count} messages (30s window)`}</span>
                             </button>
                             {!batch.isRead && (
-                              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                             )}
                           </div>
                         </div>
@@ -348,7 +349,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                             {batch.messages[0]?.body}
                           </p>
                           {!batch.isRead && (
-                            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
                           )}
                         </div>
                       )}
