@@ -64,6 +64,7 @@ import {
 } from './services/firestoreService';
 import { playGlassChimeSound, RecordingResult } from './services/audioService';
 import { requestPushPermission, triggerPushNotification } from './services/notificationService';
+import { peerService } from './services/peerService';
 
 export default function App() {
   // Application State
@@ -71,10 +72,11 @@ export default function App() {
   const lastMsgMapRef = useRef<Record<string, string>>({});
   const isInitialChatLoadRef = useRef(true);
 
-  // Request push notification permission on user login/mount
+  // Request push notification permission & init PeerJS P2P DataChannels on user login
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser?.id) {
       requestPushPermission().catch(() => {});
+      peerService.init(currentUser.id);
     }
   }, [currentUser?.id]);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -333,7 +335,7 @@ export default function App() {
 
     updateUserPresence(currentUser.id, 'online', 'Active now');
 
-    const handleBeforeUnload = () => {
+    const setOffline = () => {
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
       updateUserPresence(currentUser.id, 'offline', `Last seen today at ${timeStr}`);
     };
@@ -347,19 +349,25 @@ export default function App() {
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('beforeunload', setOffline);
+    window.addEventListener('pagehide', setOffline);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const heartbeat = setInterval(() => {
-      updateUserPresence(currentUser.id, 'online', 'Active now');
-    }, 45000);
+      if (document.visibilityState === 'visible') {
+        updateUserPresence(currentUser.id, 'online', 'Active now');
+      } else {
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        updateUserPresence(currentUser.id, 'away', `Last seen today at ${timeStr}`);
+      }
+    }, 30000);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('beforeunload', setOffline);
+      window.removeEventListener('pagehide', setOffline);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(heartbeat);
-      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-      updateUserPresence(currentUser.id, 'offline', `Last seen today at ${timeStr}`);
+      setOffline();
     };
   }, [currentUser?.id]);
 

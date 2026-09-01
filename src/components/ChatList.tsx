@@ -54,8 +54,8 @@ export const ChatList: React.FC<ChatListProps> = ({
         phoneNumber: chat.phoneNumber || '',
         avatar: chat.avatar || '👤',
         avatarType: 'emoji',
-        status: chat.status || 'online',
-        lastSeen: chat.lastSeen || 'Active now',
+        status: chat.status || 'offline',
+        lastSeen: chat.lastSeen || 'Offline',
         createdAt: chat.createdAt || Date.now()
       };
       onOpenUserProfile(targetUser);

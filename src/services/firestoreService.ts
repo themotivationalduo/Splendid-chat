@@ -13,9 +13,24 @@ import {
   onSnapshot,
   storage,
   ref,
-  deleteObject
+  deleteObject,
+  uploadBytes,
+  getDownloadURL
 } from './firebase';
 import { User, Chat, Message, CallLog, PushNotification, CallSession, UserStatus, BroadcastFeed, BroadcastFeedPost, CallSignal } from '../types';
+import { 
+  saveMessageToIndexedDB, 
+  getMessagesFromIndexedDB, 
+  deleteMessageFromIndexedDB, 
+  clearChatMessagesFromIndexedDB,
+  saveChatToIndexedDB,
+  getChatsFromIndexedDB,
+  saveMediaBlobToIndexedDB,
+  saveStatusToIndexedDB,
+  getStatusesFromIndexedDB,
+  deleteStatusFromIndexedDB
+} from './indexedDBService';
+import { peerService } from './peerService';
 
 export function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj) || obj instanceof Date) {
@@ -294,51 +309,107 @@ export function subscribeToUsers(callback: (users: User[]) => void): () => void 
   });
 }
 
+export function calculateUserPresence(userDoc: any): { status: 'online' | 'away' | 'offline'; lastSeen: string } {
+  if (!userDoc) {
+    return { status: 'offline', lastSeen: 'Offline' };
+  }
+
+  const rawStatus = userDoc.status;
+  const updatedAt = userDoc.updatedAt || 0;
+  const now = Date.now();
+
+  // If user doc doesn't have an explicit status or if rawStatus is 'offline', return offline
+  if (!rawStatus || rawStatus === 'offline') {
+    return {
+      status: 'offline',
+      lastSeen: userDoc.lastSeen && userDoc.lastSeen !== 'Active now' ? userDoc.lastSeen : 'Last seen recently'
+    };
+  }
+
+  // Active heartbeats are sent every 30-45 seconds.
+  // If no heartbeat/update for > 75 seconds (1.25 min), force offline
+  if (updatedAt > 0 && (now - updatedAt > 75000)) {
+    const minutesAgo = Math.floor((now - updatedAt) / 60000);
+    const lastSeenStr = minutesAgo > 60 
+      ? 'Last seen recently' 
+      : `Last seen ${minutesAgo}m ago`;
+    return {
+      status: 'offline',
+      lastSeen: userDoc.lastSeen && userDoc.lastSeen !== 'Active now' ? userDoc.lastSeen : lastSeenStr
+    };
+  }
+
+  return {
+    status: rawStatus as 'online' | 'away' | 'offline',
+    lastSeen: userDoc.lastSeen || (rawStatus === 'online' ? 'Active now' : 'Last seen recently')
+  };
+}
+
 // ----------------- REAL-TIME CHATS (FIRESTORE) ----------------- //
 
 export function subscribeToUserChats(userId: string, userPhone: string, callback: (chats: Chat[]) => void): () => void {
   const chatsRef = collection(db, 'chats');
+  const usersRef = collection(db, 'users');
   const cleanPhone = normalizePhoneNumber(userPhone);
 
-  return onSnapshot(chatsRef, (snapshot) => {
+  let latestChatsSnap: any = null;
+  let latestUsersMap: Record<string, any> = {};
+
+  const processAndEmitChats = () => {
+    if (!latestChatsSnap) return;
+
     const chats: Chat[] = [];
-    snapshot.forEach(docSnap => {
+    latestChatsSnap.forEach((docSnap: any) => {
       const data = docSnap.data();
-      const pIds = data.participantIds || [];
+      const pIds: string[] = data.participantIds || [];
       const pPhones = (data.participantPhones || []).map((p: string) => normalizePhoneNumber(p));
 
       // Include if current user is participant
       if (pIds.includes(userId) || (cleanPhone && pPhones.includes(cleanPhone))) {
         const userDraft = data.drafts?.[userId]?.text || getCachedChatDraft(docSnap.id, userId) || undefined;
 
-        // Resolve other participant from participantsMap or fallback
+        const otherId = pIds.find((id: string) => id !== userId);
+        const liveUserDoc = otherId ? latestUsersMap[otherId] : null;
+
+        // Resolve other participant from usersMap or participantsMap or fallback
         let peer: User;
-        if (data.participantsMap) {
-          const otherId = pIds.find((id: string) => id !== userId);
-          peer = otherId && data.participantsMap[otherId] ? data.participantsMap[otherId] : data.participant;
+        if (liveUserDoc) {
+          peer = liveUserDoc as User;
+        } else if (data.participantsMap && otherId && data.participantsMap[otherId]) {
+          peer = data.participantsMap[otherId];
         } else {
           peer = data.participant;
         }
 
         if (!peer) {
           peer = {
-            id: pIds.find((id: string) => id !== userId) || 'other',
+            id: otherId || 'other',
             fullName: data.name || 'User',
             username: data.name?.toLowerCase().replace(/[@\s]/g, '') || 'user',
             phoneNumber: pPhones.find((p: string) => p !== cleanPhone) || '',
             avatar: data.avatar || '👤',
             avatarType: 'emoji',
-            status: 'online',
-            lastSeen: 'Active now',
+            status: 'offline',
+            lastSeen: 'Offline',
             createdAt: Date.now()
           };
         }
 
         const isGroup = data.isGroup || false;
+        const presence = isGroup
+          ? { status: 'online' as const, lastSeen: 'Active now' }
+          : calculateUserPresence(liveUserDoc || peer);
+
         const peerUsername = peer.username || peer.fullName?.toLowerCase().replace(/[@\s]/g, '') || 'user';
         const displayChatName = isGroup 
           ? (data.name || 'Group Chat') 
           : `@${peerUsername.replace(/^@/, '')}`;
+
+        const updatedPeer: User = {
+          ...peer,
+          status: presence.status,
+          lastSeen: presence.lastSeen
+        };
 
         chats.push({
           id: docSnap.id,
@@ -347,8 +418,8 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
           phoneNumber: peer.phoneNumber,
           avatar: data.avatar || peer.avatar || '👤',
           avatarType: data.avatarType || peer.avatarType || 'emoji',
-          status: isGroup ? 'online' : (peer.status || data.status || 'online'),
-          lastSeen: isGroup ? 'Active now' : (peer.lastSeen || data.lastSeen || 'Active now'),
+          status: presence.status,
+          lastSeen: presence.lastSeen,
           draft: userDraft,
           isGroup: isGroup,
           creatorId: data.creatorId || '',
@@ -358,7 +429,7 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
           isMuted: data.muted || data.isMuted || false,
           unreadCount: data.unreadCount || 0,
           createdAt: data.createdAt || Date.now(),
-          participant: peer,
+          participant: updatedPeer,
           disappearingMode: data.disappearingMode || false,
           description: data.description || (data.isGroup ? '' : peer.bio) || '',
           bubbleColor: data.bubbleColor,
@@ -385,9 +456,36 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
     });
 
     callback(chats);
+  };
+
+  const unsubUsers = onSnapshot(usersRef, (usersSnap) => {
+    const map: Record<string, any> = {};
+    usersSnap.forEach((uDoc) => {
+      map[uDoc.id] = uDoc.data();
+    });
+    latestUsersMap = map;
+    processAndEmitChats();
+  }, (err) => {
+    console.warn('Firestore users snapshot error in chats sub:', err);
+  });
+
+  const unsubChats = onSnapshot(chatsRef, (snapshot) => {
+    latestChatsSnap = snapshot;
+    processAndEmitChats();
   }, (err) => {
     console.warn('Firestore chats subscription error:', err);
   });
+
+  // Re-check presence every 20s to catch users going offline due to missed heartbeats (>75s)
+  const timer = setInterval(() => {
+    processAndEmitChats();
+  }, 20000);
+
+  return () => {
+    unsubUsers();
+    unsubChats();
+    clearInterval(timer);
+  };
 }
 
 export async function createOrGetFirestoreChat(
@@ -521,26 +619,66 @@ export function subscribeToChatMessages(
   chatId: string,
   callback: (messages: Message[]) => void
 ): () => void {
+  // 1. Initial render from IndexedDB for zero latency & offline persistence
+  getMessagesFromIndexedDB(chatId).then(localMsgs => {
+    callback(localMsgs);
+  }).catch(() => {});
+
+  // 2. Listen to real-time P2P WebRTC DataChannel message events
+  const handleP2PMessage = async (e: Event) => {
+    const customEvent = e as CustomEvent;
+    if (customEvent.detail?.message?.chatId === chatId) {
+      const refreshedMsgs = await getMessagesFromIndexedDB(chatId);
+      callback(refreshedMsgs);
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('splendid-p2p-message-received', handleP2PMessage);
+  }
+
+  // 3. Listen to Firebase temporary inbox delivery queue
   const messagesRef = collection(db, 'chats', chatId, 'messages');
   const q = query(messagesRef, orderBy('createdAt', 'asc'));
 
-  return onSnapshot(q, (snapshot) => {
-    const msgs: Message[] = [];
-    const now = Date.now();
+  const unsubscribeFirestore = onSnapshot(q, async (snapshot) => {
+    if (snapshot.empty) {
+      // Return local IndexedDB history if queue is empty
+      const localMsgs = await getMessagesFromIndexedDB(chatId);
+      callback(localMsgs);
+      return;
+    }
 
-    snapshot.forEach(docSnap => {
+    const now = Date.now();
+    let hasNewDeliveredDocs = false;
+
+    for (const docSnap of snapshot.docs) {
       const d = docSnap.data();
       const createdAt = d.createdAt || now;
       const isExpiring = d.expiresAt || isExpiringMediaOrStickerOrEmoji(d);
       const expiresAt = d.expiresAt || (isExpiring ? createdAt + MEDIA_EXPIRATION_MS : undefined);
 
-      // Check if media/sticker/emoji/GIF has expired -> automatically delete from Firestore & exclude from stream
-      if (expiresAt && now >= expiresAt) {
-        deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id)).catch(() => {});
-        return;
+      let finalMediaUrl = d.mediaUrl;
+
+      // If mediaUrl is stored in temporary Firebase Storage (because receiver was offline when sent)
+      if (d.mediaUrl && (d.mediaUrl.includes('firebasestorage.googleapis.com') || d.mediaUrl.includes('temp_media'))) {
+        try {
+          // 1. Fetch the temporary media blob from Firebase Storage
+          const res = await fetch(d.mediaUrl);
+          const blob = await res.blob();
+
+          // 2. Persist permanently into receiver's device IndexedDB
+          finalMediaUrl = await saveMediaBlobToIndexedDB(docSnap.id, blob, d.mediaMeta?.mimeType);
+
+          // 3. IMMEDIATELY delete temporary media file from Firebase Storage
+          const fileRef = ref(storage, d.mediaUrl);
+          deleteObject(fileRef).catch((e) => console.debug('Firebase Storage cleanup notice:', e));
+        } catch (err) {
+          console.warn('Error downloading temporary offline media from Firebase Storage:', err);
+        }
       }
 
-      msgs.push({
+      const msgObj: Message = {
         id: docSnap.id,
         chatId: d.chatId || chatId,
         senderId: d.senderId,
@@ -553,9 +691,9 @@ export function subscribeToChatMessages(
         isExpired: false,
         isForwarded: d.isForwarded || false,
         forwardedFrom: d.forwardedFrom,
-        status: d.status || 'sent',
+        status: 'delivered',
         type: d.type || 'text',
-        mediaUrl: d.mediaUrl,
+        mediaUrl: finalMediaUrl,
         mediaMeta: d.mediaMeta || {
           fileName: d.mediaName,
           fileSize: d.mediaSize,
@@ -564,12 +702,32 @@ export function subscribeToChatMessages(
         },
         replyTo: d.replyTo,
         reactions: d.reactions || {}
+      };
+
+      // Permanently store received message in local IndexedDB
+      await saveMessageToIndexedDB(msgObj);
+      hasNewDeliveredDocs = true;
+
+      // IMMEDIATELY delete received message document from Firebase Firestore queue
+      deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id)).catch((err) => {
+        console.debug('Ephemeral queue deletion notice:', err);
       });
-    });
-    callback(msgs);
+    }
+
+    if (hasNewDeliveredDocs) {
+      const updatedMsgs = await getMessagesFromIndexedDB(chatId);
+      callback(updatedMsgs);
+    }
   }, (err) => {
-    console.warn('Messages subscription error:', err);
+    console.warn('Temporary queue subscription notice:', err);
   });
+
+  return () => {
+    unsubscribeFirestore();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('splendid-p2p-message-received', handleP2PMessage);
+    }
+  };
 }
 
 export async function sendFirestoreMessage(
@@ -596,24 +754,78 @@ export async function sendFirestoreMessage(
 
   const expiresAt = isExpiring ? now + MEDIA_EXPIRATION_MS : undefined;
 
-  const rawPayload: any = {
+  const fullMsg: Message = {
     ...message,
     id: msgDocRef.id,
+    chatId,
     createdAt: now,
-    readBy: [currentUserId],
+    status: 'sent',
     isForwarded: message.isForwarded || false,
-    forwardedFrom: message.forwardedFrom || null
+    forwardedFrom: message.forwardedFrom || undefined
   };
 
   if (expiresAt) {
-    rawPayload.expiresAt = expiresAt;
+    fullMsg.expiresAt = expiresAt;
   }
 
-  const payload = cleanFirestoreData(rawPayload);
+  // 1. SAVE PERMANENTLY TO SENDER'S LOCAL INDEXEDDB
+  await saveMessageToIndexedDB(fullMsg);
 
+  let payloadMediaUrl = message.mediaUrl;
+
+  // 2. FOR MEDIA/FILES: SAVE LOCALLY & ATTEMPT DIRECT P2P OR FALLBACK TO TEMPORARY FIREBASE STORAGE IF RECEIVER IS OFFLINE
+  if (message.mediaUrl && (message.type === 'image' || message.type === 'voice' || message.type === 'file')) {
+    await saveMediaBlobToIndexedDB(msgDocRef.id, message.mediaUrl);
+    
+    let p2pSent = false;
+    try {
+      const chatRef = doc(db, 'chats', chatId);
+      const chatSnap = await getDoc(chatRef);
+      if (chatSnap.exists()) {
+        const pIds: string[] = chatSnap.data().participantIds || [];
+        const recipientId = pIds.find(id => id !== currentUserId);
+        if (recipientId) {
+          p2pSent = await peerService.sendMediaDirectOverPeer(recipientId, fullMsg, message.mediaUrl);
+        }
+      }
+    } catch (e) {
+      console.debug('P2P media send attempt notice:', e);
+    }
+
+    // IF RECEIVER IS OFFLINE (P2P failed or not established), upload media to Firebase Storage as temporary queue space
+    if (!p2pSent) {
+      try {
+        let blob: Blob;
+        if (message.mediaUrl.startsWith('data:')) {
+          const resp = await fetch(message.mediaUrl);
+          blob = await resp.blob();
+        } else if (message.mediaUrl.startsWith('blob:')) {
+          const resp = await fetch(message.mediaUrl);
+          blob = await resp.blob();
+        } else {
+          blob = new Blob([message.mediaUrl], { type: 'application/octet-stream' });
+        }
+
+        const tempStorageRef = ref(storage, `temp_media/${msgDocRef.id}_${Date.now()}`);
+        await uploadBytes(tempStorageRef, blob);
+        payloadMediaUrl = await getDownloadURL(tempStorageRef);
+      } catch (uploadErr) {
+        console.warn('Temporary Firebase storage upload fallback warning:', uploadErr);
+      }
+    }
+  }
+
+  // 3. SEND TEMPORARY DELIVERY PACKET TO FIREBASE INBOX QUEUE
+  const rawPayload: any = {
+    ...fullMsg,
+    mediaUrl: payloadMediaUrl,
+    readBy: [currentUserId]
+  };
+
+  const payload = cleanFirestoreData(rawPayload);
   await setDoc(msgDocRef, payload);
 
-  // Update chat summary securely with setDoc merge
+  // Update chat summary securely with setDoc merge in Firebase & local IndexedDB
   const chatRef = doc(db, 'chats', chatId);
   const lastMsgText = message.content || (message.type === 'image' ? '📷 Photo' : message.type === 'voice' ? '🎤 Voice Note' : '📎 Attachment');
 
@@ -629,7 +841,7 @@ export async function sendFirestoreMessage(
   // Clear draft for this chat
   await clearChatDraft(chatId, currentUserId);
 
-  // Send real-time Firestore notification to recipient(s)
+  // Send real-time notification to recipient(s)
   try {
     const chatSnap = await getDoc(chatRef);
     if (chatSnap.exists()) {
@@ -966,20 +1178,12 @@ export async function updateFirestoreMessage(chatId: string, messageId: string, 
 
 export async function deleteFirestoreMessage(chatId: string, messageId: string): Promise<void> {
   try {
+    // 1. Delete from local IndexedDB
+    await deleteMessageFromIndexedDB(messageId);
+
+    // 2. Delete from Firestore if still in delivery queue
     const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
-    const snap = await getDoc(msgRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      if (data.mediaUrl && data.mediaUrl.includes('firebasestorage.googleapis.com')) {
-        try {
-          const fileRef = ref(storage, data.mediaUrl);
-          await deleteObject(fileRef).catch(() => {});
-        } catch (e) {
-          console.debug('Storage delete error (non-critical):', e);
-        }
-      }
-    }
-    await deleteDoc(msgRef);
+    await deleteDoc(msgRef).catch(() => {});
   } catch (e) {
     console.error('Delete message error:', e);
   }
@@ -987,11 +1191,17 @@ export async function deleteFirestoreMessage(chatId: string, messageId: string):
 
 export async function clearChatMessages(chatId: string): Promise<void> {
   try {
+    // 1. Clear local IndexedDB messages
+    await clearChatMessagesFromIndexedDB(chatId);
+
+    // 2. Clear any pending delivery messages in Firestore
     const messagesRef = collection(db, 'chats', chatId, 'messages');
-    const snap = await getDocs(messagesRef);
+    const snap = await getDocs(messagesRef).catch(() => null);
     
-    for (const docSnap of snap.docs) {
-      await deleteFirestoreMessage(chatId, docSnap.id);
+    if (snap) {
+      for (const docSnap of snap.docs) {
+        await deleteDoc(docSnap.ref).catch(() => {});
+      }
     }
 
     const chatRef = doc(db, 'chats', chatId);
@@ -1452,7 +1662,7 @@ export async function postUserStatus(
   const statusId = `status_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const statusRef = doc(db, 'statuses', statusId);
 
-  const statusDoc: any = {
+  const statusDoc: UserStatus = {
     id: statusId,
     userId: user.id,
     username: user.username,
@@ -1462,7 +1672,7 @@ export async function postUserStatus(
     content,
     createdAt: Date.now(),
     expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours duration
-    allowReshare: allowReshare // embed allowReshare property
+    allowReshare: allowReshare
   };
 
   if (duration !== undefined) {
@@ -1472,31 +1682,51 @@ export async function postUserStatus(
     statusDoc.backgroundColor = backgroundColor;
   }
 
+  // 1. Immediately persist created status into user's device IndexedDB
+  await saveStatusToIndexedDB(statusDoc);
+
+  // 2. Store temporarily in Firebase (auto-deleted after 24h)
   await setDoc(statusRef, statusDoc);
 }
 
 export function subscribeToActiveStatuses(
   callback: (statuses: UserStatus[]) => void
 ): () => void {
+  // 1. Initial render from IndexedDB for instant offline loading
+  getStatusesFromIndexedDB().then(cachedStatuses => {
+    if (cachedStatuses && cachedStatuses.length > 0) {
+      callback(cachedStatuses);
+    }
+  }).catch(() => {});
+
   const statusesRef = collection(db, 'statuses');
   // Query statuses created in the last 24 hours
   const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const q = query(statusesRef, where('createdAt', '>', oneDayAgo));
 
-  return onSnapshot(q, (snapshot) => {
-    const list: UserStatus[] = [];
+  return onSnapshot(q, async (snapshot) => {
+    const firebaseList: UserStatus[] = [];
     const now = Date.now();
     snapshot.forEach((docSnap) => {
       const data = docSnap.data() as UserStatus;
       if (data.expiresAt > now) {
-        list.push(data);
+        firebaseList.push(data);
       } else {
         deleteDoc(doc(db, 'statuses', docSnap.id)).catch(() => {});
       }
     });
-    // Sort chronologically
-    list.sort((a, b) => b.createdAt - a.createdAt);
-    callback(list);
+
+    // Merge with IndexedDB statuses so posted or viewed statuses remain saved locally
+    const localStatuses = await getStatusesFromIndexedDB().catch(() => [] as UserStatus[]);
+    const map = new Map<string, UserStatus>();
+
+    localStatuses.forEach(s => map.set(s.id, s));
+    firebaseList.forEach(s => map.set(s.id, s));
+
+    const combined = Array.from(map.values());
+    combined.sort((a, b) => b.createdAt - a.createdAt);
+
+    callback(combined);
   }, (err) => {
     console.warn('Statuses subscription error:', err);
   });
@@ -1842,8 +2072,9 @@ export async function deleteBroadcastFeedPost(postId: string): Promise<void> {
 
 
 export async function deleteUserStatus(statusId: string): Promise<void> {
+  await deleteStatusFromIndexedDB(statusId);
   const statusRef = doc(db, 'statuses', statusId);
-  await deleteDoc(statusRef);
+  await deleteDoc(statusRef).catch(() => {});
 }
 
 export async function toggleLikeStatus(statusId: string, userId: string): Promise<void> {
@@ -1866,12 +2097,19 @@ export async function toggleLikeStatus(statusId: string, userId: string): Promis
   }
 }
 
-export async function markStatusAsViewed(statusId: string, userId: string): Promise<void> {
+export async function markStatusAsViewed(statusId: string, userId: string, statusObj?: UserStatus): Promise<void> {
+  if (statusObj) {
+    await saveStatusToIndexedDB(statusObj);
+  }
+
   const statusRef = doc(db, 'statuses', statusId);
   const statusSnap = await getDoc(statusRef);
   
   if (statusSnap.exists()) {
-    const data = statusSnap.data();
+    const data = statusSnap.data() as UserStatus;
+    if (!statusObj) {
+      await saveStatusToIndexedDB(data);
+    }
     // Only update if not already viewed to save writes
     if (!data.views?.includes(userId)) {
       await updateDoc(statusRef, {

@@ -7,6 +7,7 @@ import {
   createOrGetFirestoreChat, 
   sendFirestoreMessage 
 } from '../services/firestoreService';
+import { saveStatusToIndexedDB } from '../services/indexedDBService';
 import { playGlassChimeSound } from '../services/audioService';
 
 interface StatusViewerProps {
@@ -126,9 +127,12 @@ export const StatusViewer: React.FC<StatusViewerProps> = ({
     setShowHoldMenu(false);
     setShowViewsDrawer(false);
 
+    // Persist status into device IndexedDB upon viewing
+    saveStatusToIndexedDB(currentStatus).catch(() => {});
+
     // Mark as viewed in Firestore
     if (!isMyStatus && !currentStatus.views?.includes(currentUser.id)) {
-      markStatusAsViewed(currentStatus.id, currentUser.id).catch(console.error);
+      markStatusAsViewed(currentStatus.id, currentUser.id, currentStatus).catch(console.error);
     }
 
     const isVoice = currentStatus.type === 'voice';

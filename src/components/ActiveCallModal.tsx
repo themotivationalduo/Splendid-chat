@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Chat } from '../types';
 import { playGlassChimeSound } from '../services/audioService';
 import { sendCallSignal, subscribeToCallSignals } from '../services/firestoreService';
+import { peerService } from '../services/peerService';
 
 interface ActiveCallModalProps {
   callId?: string;
@@ -24,68 +25,97 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isCameraOff, setIsCameraOff] = useState(false);
-  const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const activeMediaCallRef = useRef<any>(null);
   const localStream = useRef<MediaStream | null>(null);
+
+  // Call duration timer
+  useEffect(() => {
+    if (status !== 'accepted') return;
+    const interval = setInterval(() => {
+      setDuration(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [status]);
+
+  // Audio/video tracks toggle handlers
+  useEffect(() => {
+    if (localStream.current) {
+      localStream.current.getAudioTracks().forEach(track => {
+        track.enabled = !isMuted;
+      });
+    }
+  }, [isMuted]);
+
+  useEffect(() => {
+    if (localStream.current) {
+      localStream.current.getVideoTracks().forEach(track => {
+        track.enabled = !isCameraOff;
+      });
+    }
+  }, [isCameraOff]);
 
   useEffect(() => {
     if (!chat || status !== 'accepted') return;
 
-    const setupWebRTC = async () => {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
-      peerConnection.current = pc;
+    let cleanupStream: (() => void) | null = null;
 
-      // Get local stream
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true, 
-        video: isVideo 
-      });
-      localStream.current = stream;
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    const setupPeerJSCall = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: isVideo
+        });
+        localStream.current = stream;
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          sendCallSignal(callId, 'local-user', 'ice-candidate', event.candidate);
+        // Render local video preview if camera is on
+        const localVideo = document.getElementById('localVideo') as HTMLVideoElement;
+        if (localVideo) localVideo.srcObject = stream;
+
+        const targetUserId = chat.participant?.id || chat.participantIds?.find(id => id !== chat.participant?.id);
+
+        if (isCaller && targetUserId) {
+          // Caller initiates PeerJS P2P media call using generated Peer ID
+          const mediaCall = peerService.callPeer(targetUserId, stream);
+          if (mediaCall) {
+            activeMediaCallRef.current = mediaCall;
+            mediaCall.on('stream', (remoteStream: MediaStream) => {
+              const remoteVideo = document.getElementById('remoteVideo') as HTMLVideoElement;
+              const remoteAudio = document.getElementById('remoteAudio') as HTMLAudioElement;
+              if (remoteVideo) remoteVideo.srcObject = remoteStream;
+              if (remoteAudio) remoteAudio.srcObject = remoteStream;
+            });
+          }
+        } else {
+          // Receiver answers incoming PeerJS P2P call with local stream
+          const unsub = peerService.onIncomingCall((incomingCall) => {
+            activeMediaCallRef.current = incomingCall;
+            incomingCall.answer(stream);
+            incomingCall.on('stream', (remoteStream: MediaStream) => {
+              const remoteVideo = document.getElementById('remoteVideo') as HTMLVideoElement;
+              const remoteAudio = document.getElementById('remoteAudio') as HTMLAudioElement;
+              if (remoteVideo) remoteVideo.srcObject = remoteStream;
+              if (remoteAudio) remoteAudio.srcObject = remoteStream;
+            });
+          });
+          cleanupStream = unsub;
         }
-      };
-
-      pc.ontrack = (event) => {
-        const remoteVideo = document.getElementById('remoteVideo') as HTMLVideoElement;
-        if (remoteVideo) remoteVideo.srcObject = event.streams[0];
-      };
-
-      // Subscribe to signals from peer
-      const unsubscribe = subscribeToCallSignals(callId, 'local-user', async (signal) => {
-        if (signal.type === 'offer') {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          sendCallSignal(callId, 'local-user', 'answer', answer);
-        } else if (signal.type === 'answer') {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));
-        } else if (signal.type === 'ice-candidate') {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.payload));
-        }
-      });
-
-      if (isCaller) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        sendCallSignal(callId, 'local-user', 'offer', offer);
+      } catch (err) {
+        console.warn('Error setting up PeerJS P2P media call:', err);
       }
-
-      return unsubscribe;
     };
 
-    const cleanup = setupWebRTC();
-    
+    setupPeerJSCall();
+
     return () => {
-      cleanup.then(unsub => unsub && unsub());
-      localStream.current?.getTracks().forEach(track => track.stop());
-      peerConnection.current?.close();
+      if (cleanupStream) cleanupStream();
+      if (activeMediaCallRef.current) {
+        try { activeMediaCallRef.current.close(); } catch (e) {}
+      }
+      if (localStream.current) {
+        localStream.current.getTracks().forEach(track => track.stop());
+      }
     };
-  }, [chat, status, isCaller, callId, isVideo]);
+  }, [chat, status, isCaller, isVideo]);
 
   if (!chat) return null;
 
@@ -102,12 +132,15 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-75">
+      {/* Hidden audio element for HD Peer audio stream fallback */}
+      <audio id="remoteAudio" autoPlay />
+
       <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/15 shadow-2xl flex flex-col items-center justify-between min-h-[460px] max-h-[90vh] overflow-y-auto custom-scrollbar relative text-center">
         {/* Top Status */}
         <div className="space-y-1 select-none">
           <span className="px-3 py-1 rounded-full bg-white/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 inline-flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{isVideo ? 'HD Video Call' : 'HD Voice Call'}</span>
+            <span>{isVideo ? 'PeerJS HD Video Call' : 'PeerJS P2P Voice Call'}</span>
           </span>
           <p className="text-xs text-slate-400 font-mono pt-1">
             {status === 'ringing' ? 'Calling...' : formatTimer(duration)}
@@ -117,7 +150,10 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         {/* Center Avatar & Info */}
         <div className="my-auto flex flex-col items-center space-y-4">
           {isVideo && status === 'accepted' ? (
-             <video id="remoteVideo" autoPlay playsInline className="w-32 h-32 rounded-full object-cover border-2 border-emerald-500/40" />
+            <div className="relative w-48 h-48 rounded-2xl overflow-hidden border border-emerald-500/40 shadow-2xl bg-black/60">
+              <video id="remoteVideo" autoPlay playsInline className="w-full h-full object-cover" />
+              <video id="localVideo" autoPlay playsInline muted className="absolute bottom-2 right-2 w-16 h-16 rounded-lg object-cover border border-white/40 shadow-md" />
+            </div>
           ) : (
             <div className="relative">
               <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-blue-500/40 flex items-center justify-center text-5xl shadow-2xl animate-pulse">
@@ -132,7 +168,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
           <div className="space-y-1">
             <h3 className="text-xl font-extrabold text-white">{chat.name}</h3>
             <p className="text-xs text-slate-400">
-              {status === 'ringing' ? 'Waiting for peer connection...' : (chat.participant?.phoneNumber || 'HD Audio stream established')}
+              {status === 'ringing' ? 'Waiting for PeerJS P2P connection...' : (chat.participant?.phoneNumber || 'P2P Media Stream Established')}
             </p>
           </div>
         </div>
