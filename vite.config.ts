@@ -10,8 +10,14 @@ export default defineConfig(() => {
       react(), 
       tailwindcss(),
       VitePWA({
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
         registerType: 'autoUpdate',
-        workbox: { maximumFileSizeToCacheInBytes: 5000000 },
+        injectManifest: {
+          maximumFileSizeToCacheInBytes: 5000000,
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}']
+        },
         manifest: {
           name: 'SPLENDID CHAT',
           short_name: 'SplendidChat',
@@ -19,12 +25,21 @@ export default defineConfig(() => {
           theme_color: '#dc2626',
           background_color: '#121418',
           display: 'standalone',
+          launch_handler: {
+            client_mode: 'focus-existing'
+          },
           icons: [
             {
               src: '/icon.svg',
               sizes: '192x192 512x512',
               type: 'image/svg+xml',
-              purpose: 'any maskable'
+              purpose: 'any'
+            },
+            {
+              src: '/icon.svg',
+              sizes: '192x192 512x512',
+              type: 'image/svg+xml',
+              purpose: 'maskable'
             }
           ]
         }

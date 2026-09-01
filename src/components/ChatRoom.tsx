@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion } from 'motion/react';
 import { MessageBubble } from './MessageBubble';
 import { Chat, Message, User, WALLPAPER_OPTIONS } from '../types';
 import { AudioVoicePlayer } from './AudioVoicePlayer';
@@ -526,7 +527,13 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   const currentWallpaper = WALLPAPER_OPTIONS.find(w => w.id === currentUser.wallpaper) || WALLPAPER_OPTIONS[0];
 
   return (
-    <div className={`fixed inset-0 h-[100dvh] w-[100dvw] z-50 flex flex-col ${currentWallpaper.class} text-slate-100 antialiased overflow-hidden relative`}>
+    <motion.div 
+      initial={{ x: '100%', opacity: 0.5 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: '100%', opacity: 0.5 }}
+      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+      className={`fixed inset-0 h-[100dvh] w-[100dvw] z-50 flex flex-col ${currentWallpaper.class} text-slate-100 antialiased overflow-hidden relative`}
+    >
       {currentWallpaper.pattern && (
         <div className="absolute inset-0 pointer-events-none opacity-10 flex items-center justify-center text-7xl font-black select-none overflow-hidden">
           <div className="whitespace-nowrap">{currentWallpaper.pattern} {currentWallpaper.pattern}</div>
@@ -1360,6 +1367,6 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };

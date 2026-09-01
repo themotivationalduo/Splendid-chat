@@ -8,6 +8,7 @@ import { ChatRoom } from './components/ChatRoom';
 import { FloatingGlassNavBar } from './components/FloatingGlassNavBar';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { UserManagementModal } from './components/UserManagementModal';
+import { PWAInstallButton } from './components/PWAInstallButton';
 import { ProfileSettingsModal } from './components/ProfileSettingsModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { AuthModal } from './components/AuthModal';
@@ -22,6 +23,8 @@ import { ForwardMessageModal } from './components/ForwardMessageModal';
 import { UpdatesTabView } from './components/UpdatesTabView';
 import { StatusViewer } from './components/StatusViewer';
 import { SuccessAnimationModal, SuccessAnimationType } from './components/SuccessAnimationModal';
+
+import { AnimatePresence } from 'motion/react';
 
 import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS, APP_COLOR_OPTIONS, CallSession, UserStatus, getThemeStyles } from './types';
 import {
@@ -1422,6 +1425,9 @@ export default function App() {
                   </button>
                 </div>
 
+                {/* PWA Install Button */}
+                <PWAInstallButton />
+
                 {/* Chat Room Wallpaper Selector in Settings Tab */}
                 <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
                   <div className="flex items-center justify-between">
@@ -1512,30 +1518,32 @@ export default function App() {
       )}
 
       {/* Active Chat Room View */}
-      {selectedChat && currentUser && (
-        <ChatRoom
-          chat={selectedChat}
-          currentUser={currentUser}
-          messages={activeChatMessages}
-          onBack={() => setSelectedChat(null)}
-          onSendMessage={handleSendMessage}
-          onOpenLightbox={(url, caption) => setActiveLightboxImage({ url, caption })}
-          onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
-          onStartCall={handleStartCall}
-          onTyping={handleTyping}
-          onToggleReaction={handleToggleReaction}
-          onDeleteMessage={handleDeleteMessage}
-          onOpenForward={handleOpenForward}
-          onOpenProfile={handleOpenUserProfile}
-          onTogglePin={async (msg) => {
-            if (selectedChat) {
-              await togglePinMessage(selectedChat.id, msg);
-            }
-          }}
-          isPeerTyping={isPeerTyping}
-          peerTypingName={peerTypingName}
-        />
-      )}
+      <AnimatePresence>
+        {selectedChat && currentUser && (
+          <ChatRoom
+            chat={selectedChat}
+            currentUser={currentUser}
+            messages={activeChatMessages}
+            onBack={() => setSelectedChat(null)}
+            onSendMessage={handleSendMessage}
+            onOpenLightbox={(url, caption) => setActiveLightboxImage({ url, caption })}
+            onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
+            onStartCall={handleStartCall}
+            onTyping={handleTyping}
+            onToggleReaction={handleToggleReaction}
+            onDeleteMessage={handleDeleteMessage}
+            onOpenForward={handleOpenForward}
+            onOpenProfile={handleOpenUserProfile}
+            onTogglePin={async (msg) => {
+              if (selectedChat) {
+                await togglePinMessage(selectedChat.id, msg);
+              }
+            }}
+            isPeerTyping={isPeerTyping}
+            peerTypingName={peerTypingName}
+          />
+        )}
+      </AnimatePresence>
 
       
       {activeGroupProfile && currentUser && (
