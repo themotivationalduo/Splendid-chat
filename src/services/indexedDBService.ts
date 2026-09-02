@@ -1,7 +1,7 @@
-import { Message, Chat, UserStatus } from '../types';
+import { Message, Chat, UserStatus, CallRecording } from '../types';
 
 const DB_NAME = 'SplendidLocalChatDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -43,6 +43,14 @@ function getDB(): Promise<IDBDatabase> {
         const statusStore = db.createObjectStore('statuses', { keyPath: 'id' });
         statusStore.createIndex('userId', 'userId', { unique: false });
         statusStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+
+      // Call Recordings Store (for local audio/video call recordings in IndexedDB)
+      if (!db.objectStoreNames.contains('callRecordings')) {
+        const recStore = db.createObjectStore('callRecordings', { keyPath: 'id' });
+        recStore.createIndex('chatId', 'chatId', { unique: false });
+        recStore.createIndex('callId', 'callId', { unique: false });
+        recStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
 
@@ -338,3 +346,79 @@ export async function deleteStatusFromIndexedDB(statusId: string): Promise<void>
     console.error('Failed to delete status from IndexedDB:', err);
   }
 }
+
+// ----------------- CALL RECORDINGS IN INDEXEDDB ----------------- //
+
+export async function saveCallRecordingToIndexedDB(recording: CallRecording): Promise<void> {
+  try {
+    const db = await getDB();
+    const tx = db.transaction('callRecordings', 'readwrite');
+    const store = tx.objectStore('callRecordings');
+    store.put(recording);
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.error('Failed to save call recording to IndexedDB:', err);
+  }
+}
+
+export async function getCallRecordingsFromIndexedDB(chatId?: string): Promise<CallRecording[]> {
+  try {
+    const db = await getDB();
+    const tx = db.transaction('callRecordings', 'readonly');
+    const store = tx.objectStore('callRecordings');
+
+    let request: IDBRequest;
+    if (chatId) {
+      const index = store.index('chatId');
+      request = index.getAll(chatId);
+    } else {
+      request = store.getAll();
+    }
+
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => {
+        const recordings: CallRecording[] = request.result || [];
+        recordings.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        resolve(recordings);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.error('Failed to get call recordings from IndexedDB:', err);
+    return [];
+  }
+}
+
+export async function deleteCallRecordingFromIndexedDB(recordingId: string): Promise<void> {
+  try {
+    const db = await getDB();
+    const tx = db.transaction('callRecordings', 'readwrite');
+    const store = tx.objectStore('callRecordings');
+    store.delete(recordingId);
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.error('Failed to delete call recording from IndexedDB:', err);
+  }
+}
+
+export async function clearAllCallRecordingsFromIndexedDB(): Promise<void> {
+  try {
+    const db = await getDB();
+    const tx = db.transaction('callRecordings', 'readwrite');
+    const store = tx.objectStore('callRecordings');
+    store.clear();
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.error('Failed to clear call recordings from IndexedDB:', err);
+  }
+}
+

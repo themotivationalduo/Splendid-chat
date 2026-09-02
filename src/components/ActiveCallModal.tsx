@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Chat } from '../types';
+import { Chat, CallRecording } from '../types';
 import { playGlassChimeSound } from '../services/audioService';
 import { sendCallSignal, subscribeToCallSignals, subscribeToUserPresence } from '../services/firestoreService';
 import { peerService } from '../services/peerService';
+import { saveCallRecordingToIndexedDB } from '../services/indexedDBService';
 
 interface ActiveCallModalProps {
   callId?: string;
@@ -54,6 +55,20 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [showStatsDrawer, setShowStatsDrawer] = useState(false);
 
+  // Call Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingNotice, setRecordingNotice] = useState<{ text: string; type: 'info' | 'success' | 'warning' } | null>(null);
+  const [savedRecording, setSavedRecording] = useState<{
+    id: string;
+    name: string;
+    isVideo: boolean;
+    duration: number;
+    url: string;
+    sizeBytes: number;
+  } | null>(null);
+  const [showPreviewPlayer, setShowPreviewPlayer] = useState(false);
+
   // User Availability Tracking
   const [targetUserPresence, setTargetUserPresence] = useState<{
     status: 'online' | 'away' | 'offline';
@@ -93,6 +108,14 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
+  // Recording Refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingDurationRef = useRef<number>(0);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingAudioCtxRef = useRef<AudioContext | null>(null);
+  const combinedRecordingStreamRef = useRef<MediaStream | null>(null);
+
   // Target User ID
   const targetUserId = chat
     ? (chat.participant?.id || chat.participantIds?.find(id => id !== currentUserId) || '')
@@ -115,6 +138,15 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     }, 1000);
     return () => clearInterval(interval);
   }, [status]);
+
+  // Auto dismiss notices
+  useEffect(() => {
+    if (!recordingNotice) return;
+    const timer = setTimeout(() => {
+      setRecordingNotice(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [recordingNotice]);
 
   // WebRTC getStats API Signal Strength Polling Engine
   useEffect(() => {
@@ -540,6 +572,211 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     };
   }, [chat, status, isCaller, isVideo, callId, currentUserId, isFrontCamera]);
 
+  // ----------------- CALL RECORDING ENGINE (INDEXEDDB) ----------------- //
+
+  const startRecording = () => {
+    if (isRecording) return;
+    if (!chat) return;
+
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      recordingAudioCtxRef.current = audioCtx;
+      const dest = audioCtx.createMediaStreamDestination();
+
+      let hasAudioTracks = false;
+
+      // 1. Combine Local Audio Track
+      if (localStreamRef.current && localStreamRef.current.getAudioTracks().length > 0) {
+        try {
+          const localSrc = audioCtx.createMediaStreamSource(localStreamRef.current);
+          localSrc.connect(dest);
+          hasAudioTracks = true;
+        } catch (e) {
+          console.debug('Record local audio connect error:', e);
+        }
+      }
+
+      // 2. Combine Remote Audio Track
+      if (remoteStreamRef.current && remoteStreamRef.current.getAudioTracks().length > 0) {
+        try {
+          const remoteSrc = audioCtx.createMediaStreamSource(remoteStreamRef.current);
+          remoteSrc.connect(dest);
+          hasAudioTracks = true;
+        } catch (e) {
+          console.debug('Record remote audio connect error:', e);
+        }
+      }
+
+      const tracks: MediaStreamTrack[] = [];
+      if (hasAudioTracks) {
+        dest.stream.getAudioTracks().forEach(t => tracks.push(t));
+      } else {
+        // Direct stream fallback
+        if (localStreamRef.current?.getAudioTracks()[0]) tracks.push(localStreamRef.current.getAudioTracks()[0]);
+        if (remoteStreamRef.current?.getAudioTracks()[0]) tracks.push(remoteStreamRef.current.getAudioTracks()[0]);
+      }
+
+      // 3. Attach Video Track (if video call)
+      if (isVideo) {
+        const remoteVideoTrack = remoteStreamRef.current?.getVideoTracks()[0];
+        const localVideoTrack = localStreamRef.current?.getVideoTracks()[0];
+        if (remoteVideoTrack) {
+          tracks.push(remoteVideoTrack);
+        } else if (localVideoTrack) {
+          tracks.push(localVideoTrack);
+        }
+      }
+
+      if (tracks.length === 0) {
+        setRecordingNotice({ text: 'No audio/video stream available to record yet', type: 'warning' });
+        return;
+      }
+
+      const combinedStream = new MediaStream(tracks);
+      combinedRecordingStreamRef.current = combinedStream;
+
+      // Determine best supported MIME type
+      let mimeType = isVideo ? 'video/webm;codecs=vp9,opus' : 'audio/webm;codecs=opus';
+      if (typeof MediaRecorder !== 'undefined') {
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = isVideo ? 'video/webm;codecs=vp8,opus' : 'audio/webm';
+        }
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = isVideo ? 'video/webm' : 'audio/ogg';
+        }
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = isVideo ? 'video/mp4' : 'audio/mp4';
+        }
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = ''; // Let browser choose default
+        }
+      }
+
+      const recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = recorder;
+      recordedChunksRef.current = [];
+      recordingDurationRef.current = 0;
+      setRecordingDuration(0);
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const chunks = recordedChunksRef.current;
+        if (chunks.length > 0) {
+          const finalMime = recorder.mimeType || (isVideo ? 'video/webm' : 'audio/webm');
+          const finalBlob = new Blob(chunks, { type: finalMime });
+          const recordingId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          
+          const newRecording: CallRecording = {
+            id: recordingId,
+            callId: callId || `call_${Date.now()}`,
+            chatId: chat.id,
+            contactName: chat.name,
+            contactAvatar: chat.avatar,
+            isVideo: isVideo,
+            duration: recordingDurationRef.current || duration || 1,
+            createdAt: Date.now(),
+            formattedDate: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }),
+            mimeType: finalMime,
+            blob: finalBlob,
+            sizeBytes: finalBlob.size
+          };
+
+          await saveCallRecordingToIndexedDB(newRecording);
+          
+          const objectUrl = URL.createObjectURL(finalBlob);
+          setSavedRecording({
+            id: recordingId,
+            name: chat.name,
+            isVideo: isVideo,
+            duration: recordingDurationRef.current || duration || 1,
+            url: objectUrl,
+            sizeBytes: finalBlob.size
+          });
+
+          setRecordingNotice({
+            text: `Call recording saved locally to IndexedDB (${(finalBlob.size / 1024).toFixed(0)} KB)`,
+            type: 'success'
+          });
+        }
+      };
+
+      recorder.start(1000); // 1-second chunks
+      setIsRecording(true);
+      playGlassChimeSound('lock');
+      setRecordingNotice({
+        text: 'Call recording started (saved locally to IndexedDB)',
+        type: 'info'
+      });
+
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => {
+          const next = prev + 1;
+          recordingDurationRef.current = next;
+          return next;
+        });
+      }, 1000);
+
+    } catch (err) {
+      console.error('Failed to start call recording:', err);
+      setRecordingNotice({ text: 'Call recording not supported on this browser/stream', type: 'warning' });
+    }
+  };
+
+  const stopRecording = () => {
+    if (!isRecording) return;
+    setIsRecording(false);
+
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.debug('MediaRecorder stop notice:', e);
+      }
+    }
+
+    if (recordingAudioCtxRef.current) {
+      try { recordingAudioCtxRef.current.close(); } catch (e) {}
+      recordingAudioCtxRef.current = null;
+    }
+
+    playGlassChimeSound('lock');
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  const handleDownloadSavedRecording = () => {
+    if (!savedRecording?.url) return;
+    playGlassChimeSound('sent');
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = savedRecording.url;
+    const cleanName = (savedRecording.name || 'Call').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const ext = savedRecording.isVideo ? 'webm' : 'webm';
+    a.download = `Record_${cleanName}_${new Date().toISOString().slice(0, 10)}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+    }, 1000);
+  };
+
   const handleSwitchCamera = async () => {
     setIsFrontCamera(prev => !prev);
   };
@@ -553,6 +790,9 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   };
 
   const handleEnd = () => {
+    if (isRecording) {
+      stopRecording();
+    }
     playGlassChimeSound('incoming');
     onEndCall();
   };
@@ -562,7 +802,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
       {/* Hidden HD Audio Element with autoPlay */}
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      <div className="w-full max-w-sm sm:max-w-md p-5 sm:p-6 rounded-3xl mirror-glass-card border border-white/20 shadow-2xl flex flex-col items-center justify-between min-h-[500px] max-h-[92vh] overflow-y-auto custom-scrollbar relative text-center">
+      <div className="w-full max-w-sm sm:max-w-md p-5 sm:p-6 rounded-3xl mirror-glass-card border border-white/20 shadow-2xl flex flex-col items-center justify-between min-h-[520px] max-h-[94vh] overflow-y-auto custom-scrollbar relative text-center">
         
         {/* Top Header: Availability Indicator & Signal Strength Meter */}
         <div className="w-full flex flex-col items-center space-y-2 pt-1">
@@ -665,8 +905,98 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
             </div>
           )}
 
+          {/* Active Recording Banner */}
+          {isRecording && (
+            <div className="w-full px-3 py-1.5 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-bold flex items-center justify-between animate-pulse shadow-lg shadow-rose-500/10">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+                <span>REC {formatTimer(recordingDuration)}</span>
+              </div>
+              <span className="text-[10px] font-mono text-rose-300">IndexedDB Local</span>
+            </div>
+          )}
+
+          {/* Notification Toast Banner */}
+          {recordingNotice && (
+            <div className={`w-full px-3 py-1.5 rounded-2xl text-[11px] font-semibold border flex items-center justify-between animate-in slide-in-from-top-1 duration-150 ${
+              recordingNotice.type === 'success'
+                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200'
+                : recordingNotice.type === 'warning'
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-200'
+                : 'bg-blue-500/20 border-blue-500/40 text-blue-200'
+            }`}>
+              <span>{recordingNotice.text}</span>
+              <button
+                type="button"
+                onClick={() => setRecordingNotice(null)}
+                className="ml-2 text-xs opacity-70 hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Saved Recording Action Banner */}
+          {savedRecording && !isRecording && (
+            <div className="w-full p-2.5 rounded-2xl bg-slate-900/90 border border-white/20 text-left space-y-1.5 animate-in slide-in-from-top-2 duration-150">
+              <div className="flex items-center justify-between text-xs font-bold text-white">
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <span>💾</span>
+                  <span>Call Recording Stored</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSavedRecording(null)}
+                  className="text-slate-400 hover:text-white text-[11px]"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-slate-300 font-mono">
+                <span>Duration: {formatTimer(savedRecording.duration)}</span>
+                <span>Size: {(savedRecording.sizeBytes / 1024).toFixed(0)} KB</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowPreviewPlayer(!showPreviewPlayer)}
+                  className="flex-1 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold transition-all flex items-center justify-center gap-1"
+                >
+                  <span>{showPreviewPlayer ? 'Hide' : '▶️ Preview'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadSavedRecording}
+                  className="flex-1 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/15 text-[11px] font-bold transition-all flex items-center justify-center gap-1"
+                >
+                  <span>⬇️ Download</span>
+                </button>
+              </div>
+
+              {showPreviewPlayer && (
+                <div className="pt-1">
+                  {savedRecording.isVideo ? (
+                    <video
+                      src={savedRecording.url}
+                      controls
+                      className="w-full aspect-video rounded-xl bg-black"
+                    />
+                  ) : (
+                    <audio
+                      src={savedRecording.url}
+                      controls
+                      className="w-full h-8 accent-blue-500"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Status Sub-badge (Connection state & speaking alert) */}
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex items-center gap-2 pt-0.5">
             <span className={`px-3 py-0.5 rounded-full text-[11px] font-extrabold border inline-flex items-center gap-1.5 shadow-sm ${
               connectionQuality === 'connected'
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
@@ -696,7 +1026,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         </div>
 
         {/* Center Main View (Video Grid or Avatar Waveform) */}
-        <div className="my-auto w-full flex flex-col items-center justify-center py-3">
+        <div className="my-auto w-full flex flex-col items-center justify-center py-2">
           {isVideo && status === 'accepted' ? (
             <div className="relative w-full aspect-square max-w-[280px] sm:max-w-[320px] rounded-3xl overflow-hidden border border-white/20 shadow-2xl bg-black/80 flex items-center justify-center">
               {/* Remote Video Stream */}
@@ -739,7 +1069,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
             </div>
           ) : (
             /* Voice Call Avatar with Animated Sound Waves */
-            <div className="relative flex flex-col items-center space-y-4">
+            <div className="relative flex flex-col items-center space-y-3">
               <div className="relative flex items-center justify-center">
                 {/* Dynamic Voice Waves Ring */}
                 {isRemoteSpeaking && (
@@ -782,9 +1112,10 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         </div>
 
         {/* Bottom In-Call Interactive Control Panel */}
-        <div className="w-full space-y-3 pt-2">
-          {/* Microphones, Camera, Speaker Controls Row */}
-          <div className="flex items-center justify-center gap-2.5 sm:gap-3">
+        <div className="w-full space-y-2.5 pt-2">
+          {/* Microphones, Camera, Speaker, and Record Controls Row */}
+          <div className="flex items-center justify-center gap-2 sm:gap-2.5 flex-wrap">
+            
             {/* 1. Mic Mute / Unmute */}
             <button
               type="button"
@@ -792,7 +1123,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
                 setIsMuted(!isMuted);
                 playGlassChimeSound('lock');
               }}
-              className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
+              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex flex-col items-center justify-center text-base sm:text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
                 isMuted
                   ? 'bg-rose-500/30 border border-rose-500/60 text-rose-200'
                   : (isLocalSpeaking ? 'bg-emerald-500/30 border border-emerald-400 text-emerald-200 shadow-emerald-500/20' : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white')
@@ -803,7 +1134,27 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               <span className="text-[9px] font-bold mt-0.5">{isMuted ? 'Muted' : 'Mic On'}</span>
             </button>
 
-            {/* 2. Video Camera On / Off (if Video Call) */}
+            {/* 2. Record Call Button */}
+            <button
+              type="button"
+              id="record-call-btn"
+              onClick={toggleRecording}
+              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex flex-col items-center justify-center text-base sm:text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
+                isRecording
+                  ? 'bg-rose-600/40 border border-rose-400 text-rose-200 shadow-rose-600/30 animate-pulse'
+                  : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
+              }`}
+              title={isRecording ? 'Stop call recording' : 'Record call (saves locally to IndexedDB)'}
+            >
+              <span className={isRecording ? 'animate-bounce text-rose-400' : 'text-rose-400'}>
+                {isRecording ? '⏹️' : '🔴'}
+              </span>
+              <span className="text-[9px] font-bold mt-0.5">
+                {isRecording ? formatTimer(recordingDuration) : 'Record'}
+              </span>
+            </button>
+
+            {/* 3. Video Camera On / Off (if Video Call) */}
             {isVideo && (
               <button
                 type="button"
@@ -811,7 +1162,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
                   setIsCameraOff(!isCameraOff);
                   playGlassChimeSound('lock');
                 }}
-                className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
+                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex flex-col items-center justify-center text-base sm:text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
                   isCameraOff
                     ? 'bg-rose-500/30 border border-rose-500/60 text-rose-200'
                     : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
@@ -823,12 +1174,12 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               </button>
             )}
 
-            {/* 3. Flip Camera (if Video Call) */}
+            {/* 4. Flip Camera (if Video Call) */}
             {isVideo && (
               <button
                 type="button"
                 onClick={handleSwitchCamera}
-                className="w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white flex flex-col items-center justify-center text-lg transition-all shadow-lg active:scale-95 cursor-pointer"
+                className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white flex flex-col items-center justify-center text-base sm:text-lg transition-all shadow-lg active:scale-95 cursor-pointer"
                 title="Switch Camera (Front/Back)"
               >
                 <span>🔄</span>
@@ -836,14 +1187,14 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               </button>
             )}
 
-            {/* 4. Speaker Volume Boost Toggle */}
+            {/* 5. Speaker Volume Boost Toggle */}
             <button
               type="button"
               onClick={() => {
                 setIsSpeakerOn(!isSpeakerOn);
                 playGlassChimeSound('sent');
               }}
-              className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
+              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex flex-col items-center justify-center text-base sm:text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
                 isSpeakerOn
                   ? 'bg-blue-600/30 border border-blue-400 text-blue-200'
                   : 'bg-white/10 hover:bg-white/15 border border-white/15 text-slate-300'

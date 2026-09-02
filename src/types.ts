@@ -289,6 +289,21 @@ export interface CallLog {
   createdAt?: number;
 }
 
+export interface CallRecording {
+  id: string;
+  callId: string;
+  chatId: string;
+  contactName: string;
+  contactAvatar?: string;
+  isVideo: boolean;
+  duration: number; // Duration in seconds
+  createdAt: number; // Timestamp
+  formattedDate: string;
+  mimeType: string;
+  blob?: Blob;
+  sizeBytes?: number;
+}
+
 export interface PushNotification {
   id: string;
   title: string;

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Chat, CallLog } from '../types';
 import { playGlassChimeSound } from '../services/audioService';
+import { CallRecordingsModal } from './CallRecordingsModal';
 
 interface CallsTabViewProps {
   chats: Chat[];
@@ -15,6 +16,8 @@ export const CallsTabView: React.FC<CallsTabViewProps> = ({
   onStartCall,
   onOpenContacts
 }) => {
+  const [showRecordingsModal, setShowRecordingsModal] = useState(false);
+
   return (
     <div className="w-full max-w-md mx-auto px-4 py-4 space-y-4 pb-28 animate-in fade-in duration-75">
       {/* Header Info Banner */}
@@ -35,9 +38,40 @@ export const CallsTabView: React.FC<CallsTabViewProps> = ({
 
         <button
           onClick={onOpenContacts}
-          className="px-3 py-1.5 rounded-full bg-blue-600/20 border border-blue-500/40 text-blue-300 hover:text-white hover:bg-blue-600 text-xs font-bold transition-all"
+          className="px-3 py-1.5 rounded-full bg-blue-600/20 border border-blue-500/40 text-blue-300 hover:text-white hover:bg-blue-600 text-xs font-bold transition-all cursor-pointer active:scale-95"
         >
           <span>➕ New Call</span>
+        </button>
+      </div>
+
+      {/* Call Recordings Quick Access Banner */}
+      <div className="p-3.5 rounded-3xl bg-gradient-to-r from-rose-500/15 via-purple-500/10 to-blue-500/15 border border-rose-500/30 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-lg text-rose-300">
+            🎙️
+          </div>
+          <div>
+            <h5 className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>Call Recordings</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-200 text-[9px] font-mono">
+                IndexedDB
+              </span>
+            </h5>
+            <p className="text-[10px] text-slate-400">
+              Listen to or download your recorded voice and video calls.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            playGlassChimeSound('lock');
+            setShowRecordingsModal(true);
+          }}
+          className="px-3 py-1.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition-all active:scale-95 cursor-pointer"
+        >
+          <span>View</span>
         </button>
       </div>
 
@@ -59,7 +93,7 @@ export const CallsTabView: React.FC<CallsTabViewProps> = ({
           </p>
           <button
             onClick={onOpenContacts}
-            className="mt-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-md shadow-blue-600/30 transition-all active:scale-95 flex items-center gap-1.5 mx-auto"
+            className="mt-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-md shadow-blue-600/30 transition-all active:scale-95 flex items-center gap-1.5 mx-auto cursor-pointer"
           >
             <span>👥</span>
             <span>Browse Contacts to Call</span>
@@ -93,14 +127,14 @@ export const CallsTabView: React.FC<CallsTabViewProps> = ({
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => associatedChat && onStartCall(associatedChat, false)}
-                    className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-emerald-400 hover:text-white transition-colors flex items-center justify-center text-base"
+                    className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-emerald-400 hover:text-white transition-colors flex items-center justify-center text-base cursor-pointer"
                     title="Audio Call"
                   >
                     <span>📞</span>
                   </button>
                   <button
                     onClick={() => associatedChat && onStartCall(associatedChat, true)}
-                    className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-white transition-colors flex items-center justify-center text-base"
+                    className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-white transition-colors flex items-center justify-center text-base cursor-pointer"
                     title="Video Call"
                   >
                     <span>📹</span>
@@ -111,6 +145,12 @@ export const CallsTabView: React.FC<CallsTabViewProps> = ({
           })}
         </div>
       )}
+
+      {/* Call Recordings Modal */}
+      <CallRecordingsModal
+        isOpen={showRecordingsModal}
+        onClose={() => setShowRecordingsModal(false)}
+      />
     </div>
   );
 };
