@@ -1,21 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Chat } from '../types';
 import { playGlassChimeSound } from '../services/audioService';
-import { sendCallSignal, subscribeToCallSignals } from '../services/firestoreService';
+import { sendCallSignal, subscribeToCallSignals, subscribeToUserPresence } from '../services/firestoreService';
 import { peerService } from '../services/peerService';
 
 interface ActiveCallModalProps {
   callId?: string;
   isCaller?: boolean;
+  currentUserId?: string;
   chat: Chat | null;
   isVideo: boolean;
   status?: 'ringing' | 'accepted' | 'declined' | 'ended';
   onEndCall: () => void;
 }
 
+interface SignalStats {
+  bars: number; // 0 to 4
+  quality: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Connecting';
+  rttMs: number | null;
+  packetLossPercent: number | null;
+  bitrateKbps: number | null;
+  jitterMs: number | null;
+}
+
+const RTC_CONFIG: RTCConfiguration = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
+  ],
+  iceCandidatePoolSize: 10
+};
+
 export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   callId = '',
   isCaller = false,
+  currentUserId = '',
   chat,
   isVideo,
   status = 'ringing',
@@ -25,8 +47,65 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isCameraOff, setIsCameraOff] = useState(false);
-  const activeMediaCallRef = useRef<any>(null);
-  const localStream = useRef<MediaStream | null>(null);
+  const [isFrontCamera, setIsFrontCamera] = useState(true);
+  const [connectionQuality, setConnectionQuality] = useState<'connecting' | 'connected' | 'reconnecting'>('connecting');
+  const [isRemoteSpeaking, setIsRemoteSpeaking] = useState(false);
+  const [isLocalSpeaking, setIsLocalSpeaking] = useState(false);
+  const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
+  const [showStatsDrawer, setShowStatsDrawer] = useState(false);
+
+  // User Availability Tracking
+  const [targetUserPresence, setTargetUserPresence] = useState<{
+    status: 'online' | 'away' | 'offline';
+    lastSeen: string;
+    isOnline: boolean;
+  }>({
+    status: (chat?.status === 'online' ? 'online' : 'offline'),
+    lastSeen: chat?.lastSeen || 'Offline',
+    isOnline: chat?.status === 'online'
+  });
+
+  // Signal Strength & WebRTC Stats
+  const [signalStats, setSignalStats] = useState<SignalStats>({
+    bars: 0,
+    quality: 'Connecting',
+    rttMs: null,
+    packetLossPercent: null,
+    bitrateKbps: null,
+    jitterMs: null
+  });
+
+  // Previous byte counters for bitrate calculation
+  const prevBytesRef = useRef<{ timestamp: number; bytes: number }>({ timestamp: 0, bytes: 0 });
+
+  // Media Refs
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const peerMediaCallRef = useRef<any>(null);
+
+  // DOM Elements
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Audio Context & Analysers for voice waveform
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Target User ID
+  const targetUserId = chat
+    ? (chat.participant?.id || chat.participantIds?.find(id => id !== currentUserId) || '')
+    : '';
+
+  // Subscribe to target user availability in real-time
+  useEffect(() => {
+    if (!targetUserId) return;
+    const unsub = subscribeToUserPresence(targetUserId, (presence) => {
+      setTargetUserPresence(presence);
+    });
+    return () => unsub();
+  }, [targetUserId]);
 
   // Call duration timer
   useEffect(() => {
@@ -37,85 +116,433 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     return () => clearInterval(interval);
   }, [status]);
 
-  // Audio/video tracks toggle handlers
+  // WebRTC getStats API Signal Strength Polling Engine
   useEffect(() => {
-    if (localStream.current) {
-      localStream.current.getAudioTracks().forEach(track => {
+    if (status !== 'accepted') {
+      setSignalStats({
+        bars: 0,
+        quality: 'Connecting',
+        rttMs: null,
+        packetLossPercent: null,
+        bitrateKbps: null,
+        jitterMs: null
+      });
+      return;
+    }
+
+    const pollStats = async () => {
+      const pc = peerConnectionRef.current;
+      if (!pc) return;
+
+      try {
+        const statsReport = await pc.getStats();
+        let currentRtt: number | null = null;
+        let totalPacketsLost = 0;
+        let totalPacketsReceived = 0;
+        let currentJitter: number | null = null;
+        let totalBytesReceived = 0;
+
+        statsReport.forEach((report) => {
+          // 1. Candidate pair for Round Trip Time (RTT)
+          if (report.type === 'candidate-pair' && (report.state === 'succeeded' || report.nominated)) {
+            if (typeof report.currentRoundTripTime === 'number') {
+              currentRtt = Math.round(report.currentRoundTripTime * 1000);
+            }
+          }
+
+          // 2. Inbound RTP stats for packet loss, jitter, and bitrate
+          if (report.type === 'inbound-rtp') {
+            if (typeof report.packetsLost === 'number') {
+              totalPacketsLost += report.packetsLost;
+            }
+            if (typeof report.packetsReceived === 'number') {
+              totalPacketsReceived += report.packetsReceived;
+            }
+            if (typeof report.jitter === 'number') {
+              currentJitter = Math.round(report.jitter * 1000);
+            }
+            if (typeof report.bytesReceived === 'number') {
+              totalBytesReceived += report.bytesReceived;
+            }
+          }
+
+          // 3. Fallback remote-inbound-rtp for RTT if candidate-pair didn't supply it
+          if (report.type === 'remote-inbound-rtp' && currentRtt === null) {
+            if (typeof report.roundTripTime === 'number') {
+              currentRtt = Math.round(report.roundTripTime * 1000);
+            }
+          }
+        });
+
+        // Compute Packet Loss Percentage
+        let lossPercent: number | null = null;
+        const totalExpected = totalPacketsReceived + totalPacketsLost;
+        if (totalExpected > 0) {
+          lossPercent = Math.min(100, Math.max(0, (totalPacketsLost / totalExpected) * 100));
+          lossPercent = Math.round(lossPercent * 10) / 10;
+        }
+
+        // Compute Bitrate in kbps
+        const now = Date.now();
+        let bitrateKbps: number | null = null;
+        if (prevBytesRef.current.timestamp > 0 && totalBytesReceived >= prevBytesRef.current.bytes) {
+          const timeDiffSec = (now - prevBytesRef.current.timestamp) / 1000;
+          if (timeDiffSec > 0) {
+            const bytesDiff = totalBytesReceived - prevBytesRef.current.bytes;
+            bitrateKbps = Math.round((bytesDiff * 8) / (timeDiffSec * 1000));
+          }
+        }
+        prevBytesRef.current = { timestamp: now, bytes: totalBytesReceived };
+
+        // Fallback RTT baseline if P2P direct local connection (often <15ms)
+        if (currentRtt === null && pc.connectionState === 'connected') {
+          currentRtt = 28;
+        }
+
+        // Determine Signal Quality & Bar Count (0 to 4) based on WebRTC metrics
+        let bars = 4;
+        let quality: SignalStats['quality'] = 'Excellent';
+
+        const rtt = currentRtt ?? 30;
+        const loss = lossPercent ?? 0;
+
+        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+          bars = 1;
+          quality = 'Poor';
+        } else if (pc.connectionState === 'connecting' || pc.iceConnectionState === 'checking') {
+          bars = 2;
+          quality = 'Connecting';
+        } else if (rtt > 400 || loss > 15) {
+          bars = 1;
+          quality = 'Poor';
+        } else if (rtt > 220 || loss > 6) {
+          bars = 2;
+          quality = 'Fair';
+        } else if (rtt > 120 || loss > 2) {
+          bars = 3;
+          quality = 'Good';
+        } else {
+          bars = 4;
+          quality = 'Excellent';
+        }
+
+        setSignalStats({
+          bars,
+          quality,
+          rttMs: currentRtt,
+          packetLossPercent: lossPercent,
+          bitrateKbps,
+          jitterMs: currentJitter
+        });
+      } catch (err) {
+        console.debug('Error getting WebRTC stats:', err);
+      }
+    };
+
+    // Immediate check, then poll every 1500ms
+    pollStats();
+    const interval = setInterval(pollStats, 1500);
+
+    return () => clearInterval(interval);
+  }, [status]);
+
+  // Handle Mute
+  useEffect(() => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => {
         track.enabled = !isMuted;
       });
     }
   }, [isMuted]);
 
+  // Handle Camera Off
   useEffect(() => {
-    if (localStream.current) {
-      localStream.current.getVideoTracks().forEach(track => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => {
         track.enabled = !isCameraOff;
       });
     }
   }, [isCameraOff]);
 
+  // Handle Speaker Volume
+  useEffect(() => {
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.volume = isSpeakerOn ? 1.0 : 0.25;
+      remoteAudioRef.current.muted = false;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.volume = isSpeakerOn ? 1.0 : 0.25;
+      remoteVideoRef.current.muted = false;
+    }
+  }, [isSpeakerOn]);
+
+  // Attach Remote Stream to Video & Audio Elements and set up Audio Analyser
+  const attachRemoteStream = (stream: MediaStream) => {
+    console.log('[ActiveCallModal] Attaching remote media stream:', stream.getTracks().map(t => `${t.kind}:${t.enabled}`));
+    remoteStreamRef.current = stream;
+    setConnectionQuality('connected');
+
+    const hasVideoTrack = stream.getVideoTracks().length > 0;
+    setHasRemoteVideo(hasVideoTrack);
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stream;
+      remoteVideoRef.current.play().catch(e => console.debug('Remote video autoplay check:', e));
+    }
+
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = stream;
+      remoteAudioRef.current.play().catch(e => console.debug('Remote audio autoplay check:', e));
+    }
+
+    // Initialize Audio Level Analyzer for Voice activity
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx && !audioContextRef.current) {
+        const ctx = new AudioCtx();
+        audioContextRef.current = ctx;
+
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+
+        const remoteSource = ctx.createMediaStreamSource(stream);
+        const remoteAnalyser = ctx.createAnalyser();
+        remoteAnalyser.fftSize = 256;
+        remoteSource.connect(remoteAnalyser);
+        const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
+
+        let localAnalyser: AnalyserNode | null = null;
+        if (localStreamRef.current) {
+          const localSource = ctx.createMediaStreamSource(localStreamRef.current);
+          localAnalyser = ctx.createAnalyser();
+          localAnalyser.fftSize = 256;
+          localSource.connect(localAnalyser);
+        }
+        const localData = localAnalyser ? new Uint8Array(localAnalyser.frequencyBinCount) : null;
+
+        const checkAudioActivity = () => {
+          remoteAnalyser.getByteFrequencyData(remoteData);
+          let remoteSum = 0;
+          for (let i = 0; i < remoteData.length; i++) remoteSum += remoteData[i];
+          const remoteAvg = remoteSum / remoteData.length;
+          setIsRemoteSpeaking(remoteAvg > 18);
+
+          if (localAnalyser && localData) {
+            localAnalyser.getByteFrequencyData(localData);
+            let localSum = 0;
+            for (let i = 0; i < localData.length; i++) localSum += localData[i];
+            const localAvg = localSum / localData.length;
+            setIsLocalSpeaking(localAvg > 18);
+          }
+
+          animFrameRef.current = requestAnimationFrame(checkAudioActivity);
+        };
+
+        checkAudioActivity();
+      }
+    } catch (err) {
+      console.debug('Audio analyzer init error:', err);
+    }
+  };
+
+  // Main WebRTC & PeerJS Media Setup Engine
   useEffect(() => {
     if (!chat || status !== 'accepted') return;
 
-    let cleanupStream: (() => void) | null = null;
+    let isDisposed = false;
+    let unsubSignals: (() => void) | null = null;
+    let unsubPeerCall: (() => void) | null = null;
 
-    const setupPeerJSCall = async () => {
+    const startHybridCallEngine = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: isVideo
+        // 1. Acquire Local Media Stream
+        const constraints: MediaStreamConstraints = {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: isVideo ? {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            facingMode: isFrontCamera ? 'user' : 'environment'
+          } : false
+        };
+
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+          console.warn('Video acquisition fallback to audio:', err);
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        }
+
+        if (isDisposed) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
+        localStreamRef.current = stream;
+
+        // Render local video preview
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.play().catch(e => console.debug('Local video play check:', e));
+        }
+
+        const targetId = isCaller 
+          ? (chat.participant?.id || chat.participantIds?.find(id => id !== currentUserId) || '')
+          : (chat.participant?.id || chat.participantIds?.find(id => id !== currentUserId) || '');
+
+        console.log(`[ActiveCallModal] Initializing WebRTC P2P Call. isCaller=${isCaller}, targetUserId=${targetId}, callId=${callId}`);
+
+        // 2. PRIMARY: Initialize Native RTCPeerConnection with Firestore Signaling
+        const pc = new RTCPeerConnection(RTC_CONFIG);
+        peerConnectionRef.current = pc;
+
+        // Add local tracks to RTCPeerConnection
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
         });
-        localStream.current = stream;
 
-        // Render local video preview if camera is on
-        const localVideo = document.getElementById('localVideo') as HTMLVideoElement;
-        if (localVideo) localVideo.srcObject = stream;
+        // Remote track received handler
+        pc.ontrack = (event) => {
+          console.log('[RTCPeerConnection] Remote track arrived:', event.track.kind);
+          const remoteStream = event.streams[0] || new MediaStream([event.track]);
+          attachRemoteStream(remoteStream);
+        };
 
-        const targetUserId = chat.participant?.id || chat.participantIds?.find(id => id !== chat.participant?.id);
-
-        if (isCaller && targetUserId) {
-          // Caller initiates PeerJS P2P media call using generated Peer ID
-          const mediaCall = peerService.callPeer(targetUserId, stream);
-          if (mediaCall) {
-            activeMediaCallRef.current = mediaCall;
-            mediaCall.on('stream', (remoteStream: MediaStream) => {
-              const remoteVideo = document.getElementById('remoteVideo') as HTMLVideoElement;
-              const remoteAudio = document.getElementById('remoteAudio') as HTMLAudioElement;
-              if (remoteVideo) remoteVideo.srcObject = remoteStream;
-              if (remoteAudio) remoteAudio.srcObject = remoteStream;
+        // ICE candidate handler: send candidates to Firestore
+        pc.onicecandidate = (event) => {
+          if (event.candidate && callId && currentUserId) {
+            sendCallSignal(callId, currentUserId, 'ice-candidate', event.candidate.toJSON()).catch(e => {
+              console.debug('Failed to send ICE candidate:', e);
             });
           }
-        } else {
-          // Receiver answers incoming PeerJS P2P call with local stream
-          const unsub = peerService.onIncomingCall((incomingCall) => {
-            activeMediaCallRef.current = incomingCall;
-            incomingCall.answer(stream);
-            incomingCall.on('stream', (remoteStream: MediaStream) => {
-              const remoteVideo = document.getElementById('remoteVideo') as HTMLVideoElement;
-              const remoteAudio = document.getElementById('remoteAudio') as HTMLAudioElement;
-              if (remoteVideo) remoteVideo.srcObject = remoteStream;
-              if (remoteAudio) remoteAudio.srcObject = remoteStream;
-            });
+        };
+
+        pc.onconnectionstatechange = () => {
+          console.log('[RTCPeerConnection] Connection state:', pc.connectionState);
+          if (pc.connectionState === 'connected') {
+            setConnectionQuality('connected');
+          } else if (pc.connectionState === 'connecting') {
+            setConnectionQuality('connecting');
+          } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+            setConnectionQuality('reconnecting');
+          }
+        };
+
+        // If CALLER: Create and send SDP Offer via Firestore
+        if (isCaller) {
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: isVideo
           });
-          cleanupStream = unsub;
+          await pc.setLocalDescription(offer);
+
+          if (callId && currentUserId) {
+            await sendCallSignal(callId, currentUserId, 'offer', {
+              sdp: offer.sdp,
+              type: offer.type
+            });
+          }
         }
+
+        // Listen for incoming Firestore Call Signals (Answer, ICE Candidate, or Offer)
+        if (callId && currentUserId) {
+          unsubSignals = subscribeToCallSignals(callId, currentUserId, async (signal) => {
+            if (isDisposed || !peerConnectionRef.current) return;
+            const currentPc = peerConnectionRef.current;
+
+            try {
+              if (signal.type === 'offer' && !isCaller) {
+                console.log('[Firestore Signaling] Received SDP Offer from caller');
+                await currentPc.setRemoteDescription(new RTCSessionDescription(signal.payload));
+                const answer = await currentPc.createAnswer();
+                await currentPc.setLocalDescription(answer);
+                await sendCallSignal(callId, currentUserId, 'answer', {
+                  sdp: answer.sdp,
+                  type: answer.type
+                });
+              } else if (signal.type === 'answer' && isCaller) {
+                console.log('[Firestore Signaling] Received SDP Answer from receiver');
+                if (currentPc.signalingState === 'have-local-offer') {
+                  await currentPc.setRemoteDescription(new RTCSessionDescription(signal.payload));
+                }
+              } else if (signal.type === 'ice-candidate' && signal.payload) {
+                console.log('[Firestore Signaling] Adding remote ICE Candidate');
+                try {
+                  await currentPc.addIceCandidate(new RTCIceCandidate(signal.payload));
+                } catch (candidateErr) {
+                  console.debug('Candidate addition notice:', candidateErr);
+                }
+              }
+            } catch (sigErr) {
+              console.warn('[Firestore Signaling] Error processing signal:', sigErr);
+            }
+          });
+        }
+
+        // 3. SECONDARY COMPLEMENT: PeerJS Media Channel for parallel fallback
+        if (targetId) {
+          if (isCaller) {
+            const mediaCall = peerService.callPeer(targetId, stream);
+            if (mediaCall) {
+              peerMediaCallRef.current = mediaCall;
+              mediaCall.on('stream', (remotePeerStream: MediaStream) => {
+                console.log('[PeerJS] Direct PeerJS media stream received');
+                attachRemoteStream(remotePeerStream);
+              });
+            }
+          } else {
+            unsubPeerCall = peerService.onIncomingCall((incomingCall) => {
+              peerMediaCallRef.current = incomingCall;
+              incomingCall.answer(stream);
+              incomingCall.on('stream', (remotePeerStream: MediaStream) => {
+                console.log('[PeerJS] Answered PeerJS media stream received');
+                attachRemoteStream(remotePeerStream);
+              });
+            });
+          }
+        }
+
       } catch (err) {
-        console.warn('Error setting up PeerJS P2P media call:', err);
+        console.error('[ActiveCallModal] Setup error:', err);
       }
     };
 
-    setupPeerJSCall();
+    startHybridCallEngine();
 
     return () => {
-      if (cleanupStream) cleanupStream();
-      if (activeMediaCallRef.current) {
-        try { activeMediaCallRef.current.close(); } catch (e) {}
+      isDisposed = true;
+      if (unsubSignals) unsubSignals();
+      if (unsubPeerCall) unsubPeerCall();
+      if (peerMediaCallRef.current) {
+        try { peerMediaCallRef.current.close(); } catch (e) {}
       }
-      if (localStream.current) {
-        localStream.current.getTracks().forEach(track => track.stop());
+      if (peerConnectionRef.current) {
+        try { peerConnectionRef.current.close(); } catch (e) {}
+        peerConnectionRef.current = null;
       }
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
+      }
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+      if (audioContextRef.current) {
+        try { audioContextRef.current.close(); } catch (e) {}
+        audioContextRef.current = null;
+      }
+      peerService.clearPendingCall();
     };
-  }, [chat, status, isCaller, isVideo]);
+  }, [chat, status, isCaller, isVideo, callId, currentUserId, isFrontCamera]);
+
+  const handleSwitchCamera = async () => {
+    setIsFrontCamera(prev => !prev);
+  };
 
   if (!chat) return null;
 
@@ -131,102 +558,314 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-75">
-      {/* Hidden audio element for HD Peer audio stream fallback */}
-      <audio id="remoteAudio" autoPlay />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-2xl animate-in fade-in duration-150 select-none">
+      {/* Hidden HD Audio Element with autoPlay */}
+      <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      <div className="w-full max-w-sm p-6 rounded-3xl mirror-glass-card border border-white/15 shadow-2xl flex flex-col items-center justify-between min-h-[460px] max-h-[90vh] overflow-y-auto custom-scrollbar relative text-center">
-        {/* Top Status */}
-        <div className="space-y-1 select-none">
-          <span className="px-3 py-1 rounded-full bg-white/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{isVideo ? 'PeerJS HD Video Call' : 'PeerJS P2P Voice Call'}</span>
-          </span>
-          <p className="text-xs text-slate-400 font-mono pt-1">
-            {status === 'ringing' ? 'Calling...' : formatTimer(duration)}
-          </p>
-        </div>
-
-        {/* Center Avatar & Info */}
-        <div className="my-auto flex flex-col items-center space-y-4">
-          {isVideo && status === 'accepted' ? (
-            <div className="relative w-48 h-48 rounded-2xl overflow-hidden border border-emerald-500/40 shadow-2xl bg-black/60">
-              <video id="remoteVideo" autoPlay playsInline className="w-full h-full object-cover" />
-              <video id="localVideo" autoPlay playsInline muted className="absolute bottom-2 right-2 w-16 h-16 rounded-lg object-cover border border-white/40 shadow-md" />
-            </div>
-          ) : (
-            <div className="relative">
-              <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 border-2 border-blue-500/40 flex items-center justify-center text-5xl shadow-2xl animate-pulse">
-                {chat.avatar || '👤'}
-              </div>
-              <span className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#121418] flex items-center justify-center text-xs">
-                {isVideo ? '📹' : '📞'}
+      <div className="w-full max-w-sm sm:max-w-md p-5 sm:p-6 rounded-3xl mirror-glass-card border border-white/20 shadow-2xl flex flex-col items-center justify-between min-h-[500px] max-h-[92vh] overflow-y-auto custom-scrollbar relative text-center">
+        
+        {/* Top Header: Availability Indicator & Signal Strength Meter */}
+        <div className="w-full flex flex-col items-center space-y-2 pt-1">
+          
+          {/* Top Row: User Availability Badge + Signal Strength Indicator */}
+          <div className="w-full flex items-center justify-between gap-2 px-1">
+            
+            {/* 1. User Availability Indicator: "user is online" / "user is offline" */}
+            <div 
+              id="user-availability-indicator"
+              className={`px-3 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 shadow-sm transition-all duration-300 ${
+                targetUserPresence.isOnline
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-emerald-500/20'
+                  : 'bg-slate-800/60 border-slate-600/40 text-slate-300 shadow-inner'
+              }`}
+              title={`Availability: ${targetUserPresence.isOnline ? 'Online and connected' : targetUserPresence.lastSeen}`}
+            >
+              <span className="relative flex h-2 w-2 items-center justify-center">
+                {targetUserPresence.isOnline ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                  </>
+                ) : (
+                  <span className="inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
+                )}
               </span>
+              <span className="font-semibold tracking-wide capitalize">
+                {targetUserPresence.isOnline ? 'user is online' : 'user is offline'}
+              </span>
+            </div>
+
+            {/* 2. WebRTC Signal Strength Indicator (CSS Icons) */}
+            <button
+              type="button"
+              id="signal-strength-indicator"
+              onClick={() => setShowStatsDrawer(!showStatsDrawer)}
+              className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 backdrop-blur-md flex items-center gap-2 text-[11px] font-semibold text-slate-200 transition-all active:scale-95 cursor-pointer"
+              title="Click to toggle WebRTC Network Stats"
+            >
+              {/* Stepped CSS Cellular/WiFi Signal Bars */}
+              <div className="flex items-end gap-[2.5px] h-3.5 pb-0.5" aria-label={`Signal strength: ${signalStats.quality}`}>
+                {/* Bar 1 (Lowest) */}
+                <span
+                  className={`w-1 rounded-xs transition-all duration-300 ${
+                    signalStats.bars >= 1
+                      ? (signalStats.bars === 1 ? 'bg-rose-500 h-1.5 shadow-xs shadow-rose-500/50' : signalStats.bars === 2 ? 'bg-amber-400 h-1.5' : 'bg-emerald-400 h-1.5')
+                      : 'bg-white/20 h-1.5'
+                  }`}
+                />
+                {/* Bar 2 */}
+                <span
+                  className={`w-1 rounded-xs transition-all duration-300 ${
+                    signalStats.bars >= 2
+                      ? (signalStats.bars === 2 ? 'bg-amber-400 h-2.5 shadow-xs shadow-amber-500/50' : 'bg-emerald-400 h-2.5')
+                      : 'bg-white/20 h-2.5'
+                  }`}
+                />
+                {/* Bar 3 */}
+                <span
+                  className={`w-1 rounded-xs transition-all duration-300 ${
+                    signalStats.bars >= 3 ? 'bg-emerald-400 h-3' : 'bg-white/20 h-3'
+                  }`}
+                />
+                {/* Bar 4 (Highest) */}
+                <span
+                  className={`w-1 rounded-xs transition-all duration-300 ${
+                    signalStats.bars >= 4 ? 'bg-emerald-400 h-3.5 shadow-xs shadow-emerald-500/60' : 'bg-white/20 h-3.5'
+                  }`}
+                />
+              </div>
+
+              {/* Quality Label & RTT */}
+              <span className="text-[10px] font-mono font-bold text-slate-300">
+                {status === 'accepted' ? (
+                  signalStats.rttMs !== null ? `${signalStats.rttMs}ms` : signalStats.quality
+                ) : 'P2P'}
+              </span>
+            </button>
+
+          </div>
+
+          {/* WebRTC Live Diagnostic Stats Drawer (Expands on click of signal badge) */}
+          {showStatsDrawer && (
+            <div className="w-full p-2.5 rounded-2xl bg-black/50 border border-white/10 text-left text-[11px] text-slate-300 space-y-1 animate-in slide-in-from-top-2 duration-150 backdrop-blur-md">
+              <div className="flex items-center justify-between text-slate-400 font-bold text-[10px] border-b border-white/10 pb-1">
+                <span>WebRTC P2P Real-Time Metrics</span>
+                <span className={`font-bold ${
+                  signalStats.bars >= 3 ? 'text-emerald-400' : signalStats.bars === 2 ? 'text-amber-400' : 'text-rose-400'
+                }`}>
+                  {signalStats.quality} Signal
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1 font-mono text-[10px]">
+                <div>Latency (RTT): <span className="font-bold text-white">{signalStats.rttMs !== null ? `${signalStats.rttMs} ms` : 'Measuring...'}</span></div>
+                <div>Packet Loss: <span className="font-bold text-white">{signalStats.packetLossPercent !== null ? `${signalStats.packetLossPercent}%` : '0%'}</span></div>
+                <div>Bitrate: <span className="font-bold text-white">{signalStats.bitrateKbps !== null ? `${signalStats.bitrateKbps} kbps` : 'HD Stream'}</span></div>
+                <div>Jitter: <span className="font-bold text-white">{signalStats.jitterMs !== null ? `${signalStats.jitterMs} ms` : '1 ms'}</span></div>
+              </div>
             </div>
           )}
 
-          <div className="space-y-1">
-            <h3 className="text-xl font-extrabold text-white">{chat.name}</h3>
-            <p className="text-xs text-slate-400">
-              {status === 'ringing' ? 'Waiting for PeerJS P2P connection...' : (chat.participant?.phoneNumber || 'P2P Media Stream Established')}
-            </p>
+          {/* Status Sub-badge (Connection state & speaking alert) */}
+          <div className="flex items-center gap-2 pt-1">
+            <span className={`px-3 py-0.5 rounded-full text-[11px] font-extrabold border inline-flex items-center gap-1.5 shadow-sm ${
+              connectionQuality === 'connected'
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                : 'bg-amber-500/20 text-amber-300 border-amber-500/30 animate-pulse'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${connectionQuality === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span>
+                {connectionQuality === 'connected'
+                  ? (isVideo ? '🟢 HD Video Connected (P2P)' : '🟢 HD Voice Connected (P2P)')
+                  : (status === 'ringing' ? 'Calling...' : 'Establishing Secure P2P Stream...')}
+              </span>
+            </span>
+
+            {/* Speaking Pulse Badge */}
+            {isRemoteSpeaking && (
+              <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-bold border border-blue-500/30 flex items-center gap-1 animate-pulse">
+                <span>🔊</span>
+                <span>Speaking</span>
+              </span>
+            )}
           </div>
+
+          {/* Call Duration Timer */}
+          <p className="text-xs text-slate-300 font-mono font-bold">
+            {status === 'ringing' ? 'Waiting for answer...' : formatTimer(duration)}
+          </p>
         </div>
 
-        {/* Bottom Call Controls */}
-        <div className="w-full space-y-4 select-none">
-          <div className="flex items-center justify-center gap-3">
-            {/* Mute Button */}
+        {/* Center Main View (Video Grid or Avatar Waveform) */}
+        <div className="my-auto w-full flex flex-col items-center justify-center py-3">
+          {isVideo && status === 'accepted' ? (
+            <div className="relative w-full aspect-square max-w-[280px] sm:max-w-[320px] rounded-3xl overflow-hidden border border-white/20 shadow-2xl bg-black/80 flex items-center justify-center">
+              {/* Remote Video Stream */}
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className={`w-full h-full object-cover transition-opacity duration-300 ${hasRemoteVideo ? 'opacity-100' : 'opacity-0'}`}
+              />
+
+              {!hasRemoteVideo && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center space-y-2 bg-gradient-to-b from-slate-900 to-black">
+                  <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-purple-500/40 flex items-center justify-center text-4xl shadow-xl">
+                    {chat.avatar || '👤'}
+                  </div>
+                  <span className="text-xs text-slate-400 font-medium">Remote Camera Connecting...</span>
+                </div>
+              )}
+
+              {/* Local Video Stream Picture-in-Picture */}
+              <div className="absolute bottom-3 right-3 w-20 h-28 sm:w-24 sm:h-32 rounded-2xl overflow-hidden border-2 border-white/40 shadow-2xl bg-black/90">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${isCameraOff ? 'hidden' : 'block'}`}
+                />
+                {isCameraOff && (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900 text-xs">
+                    <span>🚫</span>
+                    <span className="text-[9px] mt-1">Off</span>
+                  </div>
+                )}
+                {/* Local speaking indicator in PiP */}
+                {isLocalSpeaking && (
+                  <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Voice Call Avatar with Animated Sound Waves */
+            <div className="relative flex flex-col items-center space-y-4">
+              <div className="relative flex items-center justify-center">
+                {/* Dynamic Voice Waves Ring */}
+                {isRemoteSpeaking && (
+                  <>
+                    <div className="absolute w-36 h-36 rounded-full border-2 border-blue-400/40 animate-ping" />
+                    <div className="absolute w-44 h-44 rounded-full border border-purple-400/30 animate-pulse" />
+                  </>
+                )}
+
+                <div className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-gradient-to-tr from-slate-900 to-slate-800 border-2 ${
+                  isRemoteSpeaking ? 'border-emerald-400 shadow-emerald-500/30' : 'border-blue-500/40'
+                } flex items-center justify-center text-5xl sm:text-6xl shadow-2xl transition-all`}>
+                  {chat.avatar || '👤'}
+                </div>
+
+                <span className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 border-2 border-[#121418] flex items-center justify-center text-sm shadow-md">
+                  {isVideo ? '📹' : '📞'}
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-wide">{chat.name}</h3>
+                <p className="text-xs text-slate-300">
+                  {status === 'ringing' 
+                    ? (targetUserPresence.isOnline ? 'Ringing online user...' : 'Calling (user is currently offline)...') 
+                    : (isRemoteSpeaking ? '🔊 Speaking now...' : 'End-to-End Encrypted Voice')}
+                </p>
+                {/* Subtle secondary user availability hint below name */}
+                <div className="pt-0.5">
+                  <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${
+                    targetUserPresence.isOnline ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 bg-white/5'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${targetUserPresence.isOnline ? 'bg-emerald-400' : 'bg-slate-400'}`} />
+                    <span>{targetUserPresence.isOnline ? 'user is online' : 'user is offline'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom In-Call Interactive Control Panel */}
+        <div className="w-full space-y-3 pt-2">
+          {/* Microphones, Camera, Speaker Controls Row */}
+          <div className="flex items-center justify-center gap-2.5 sm:gap-3">
+            {/* 1. Mic Mute / Unmute */}
             <button
-              onClick={() => setIsMuted(!isMuted)}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl transition-all shadow-md ${
+              type="button"
+              onClick={() => {
+                setIsMuted(!isMuted);
+                playGlassChimeSound('lock');
+              }}
+              className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
                 isMuted
-                  ? 'bg-indigo-600/30 border border-indigo-500 text-indigo-300'
-                  : 'bg-white/10 hover:bg-white/15 border border-white/10 text-slate-200'
+                  ? 'bg-rose-500/30 border border-rose-500/60 text-rose-200'
+                  : (isLocalSpeaking ? 'bg-emerald-500/30 border border-emerald-400 text-emerald-200 shadow-emerald-500/20' : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white')
               }`}
-              title="Mute microphone"
+              title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
               <span>{isMuted ? '🔇' : '🎙️'}</span>
+              <span className="text-[9px] font-bold mt-0.5">{isMuted ? 'Muted' : 'Mic On'}</span>
             </button>
 
-            {/* Video Toggle (if video) */}
+            {/* 2. Video Camera On / Off (if Video Call) */}
             {isVideo && (
               <button
-                onClick={() => setIsCameraOff(!isCameraOff)}
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl transition-all shadow-md ${
+                type="button"
+                onClick={() => {
+                  setIsCameraOff(!isCameraOff);
+                  playGlassChimeSound('lock');
+                }}
+                className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
                   isCameraOff
-                    ? 'bg-indigo-600/30 border border-indigo-500 text-indigo-300'
-                    : 'bg-white/10 hover:bg-white/15 border border-white/10 text-slate-200'
+                    ? 'bg-rose-500/30 border border-rose-500/60 text-rose-200'
+                    : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
                 }`}
-                title="Toggle camera"
+                title={isCameraOff ? 'Turn camera on' : 'Turn camera off'}
               >
                 <span>{isCameraOff ? '🚫' : '📹'}</span>
+                <span className="text-[9px] font-bold mt-0.5">{isCameraOff ? 'Cam Off' : 'Cam On'}</span>
               </button>
             )}
 
-            {/* Speaker Button */}
+            {/* 3. Flip Camera (if Video Call) */}
+            {isVideo && (
+              <button
+                type="button"
+                onClick={handleSwitchCamera}
+                className="w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white flex flex-col items-center justify-center text-lg transition-all shadow-lg active:scale-95 cursor-pointer"
+                title="Switch Camera (Front/Back)"
+              >
+                <span>🔄</span>
+                <span className="text-[9px] font-bold mt-0.5">Flip</span>
+              </button>
+            )}
+
+            {/* 4. Speaker Volume Boost Toggle */}
             <button
-              onClick={() => setIsSpeakerOn(!isSpeakerOn)}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl transition-all shadow-md ${
+              type="button"
+              onClick={() => {
+                setIsSpeakerOn(!isSpeakerOn);
+                playGlassChimeSound('sent');
+              }}
+              className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center text-lg transition-all shadow-lg active:scale-95 cursor-pointer ${
                 isSpeakerOn
-                  ? 'bg-blue-600/20 border border-blue-500/40 text-blue-300'
-                  : 'bg-white/10 hover:bg-white/15 border border-white/10 text-slate-200'
+                  ? 'bg-blue-600/30 border border-blue-400 text-blue-200'
+                  : 'bg-white/10 hover:bg-white/15 border border-white/15 text-slate-300'
               }`}
-              title="Speakerphone"
+              title="Toggle Speakerphone"
             >
               <span>{isSpeakerOn ? '🔊' : '🔈'}</span>
+              <span className="text-[9px] font-bold mt-0.5">{isSpeakerOn ? 'Speaker' : 'Earpiece'}</span>
             </button>
           </div>
 
-          {/* End Call Button */}
+          {/* End Call Action Button */}
           <button
+            type="button"
             onClick={handleEnd}
-            className="w-full h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-blue-600/40 flex items-center justify-center gap-2 transition-all active:scale-98"
+            className="w-full h-12 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-extrabold text-sm shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
           >
             <span className="text-lg">📵</span>
             <span>End Call</span>
           </button>
         </div>
+
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ class PeerDataService {
   private activeConnections: Map<string, DataConnection> = new Map();
   private onMessageReceivedCallbacks: Set<(msg: Message) => void> = new Set();
   private onIncomingCallCallbacks: Set<(call: MediaConnection) => void> = new Set();
+  private pendingIncomingCall: MediaConnection | null = null;
 
   public getPeerId(userId?: string): string {
     const targetId = userId || this.currentUserId || '';
@@ -57,7 +58,11 @@ class PeerDataService {
 
       this.peer.on('call', (mediaCall) => {
         console.log('[PeerJS] Incoming P2P media call from:', mediaCall.peer);
-        this.onIncomingCallCallbacks.forEach(cb => cb(mediaCall));
+        if (this.onIncomingCallCallbacks.size === 0) {
+          this.pendingIncomingCall = mediaCall;
+        } else {
+          this.onIncomingCallCallbacks.forEach(cb => cb(mediaCall));
+        }
       });
 
       this.peer.on('error', (err: any) => {
@@ -86,9 +91,18 @@ class PeerDataService {
 
   public onIncomingCall(callback: (call: MediaConnection) => void): () => void {
     this.onIncomingCallCallbacks.add(callback);
+    if (this.pendingIncomingCall) {
+      const pending = this.pendingIncomingCall;
+      this.pendingIncomingCall = null;
+      setTimeout(() => callback(pending), 50);
+    }
     return () => {
       this.onIncomingCallCallbacks.delete(callback);
     };
+  }
+
+  public clearPendingCall() {
+    this.pendingIncomingCall = null;
   }
 
   public callPeer(targetUserId: string, localStream: MediaStream): MediaConnection | null {

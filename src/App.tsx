@@ -342,7 +342,7 @@ export default function App() {
   const [isForwardOpen, setIsForwardOpen] = useState(false);
   const [messageToForward, setMessageToForward] = useState<Message | null>(null);
   const [activeLightboxImage, setActiveLightboxImage] = useState<{ url: string; caption?: string } | null>(null);
-  const [activeCall, setActiveCall] = useState<{ chat: Chat; isVideo: boolean } | null>(null);
+  const [activeCall, setActiveCall] = useState<{ chat: Chat; isVideo: boolean; isCaller?: boolean } | null>(null);
   const [activeCallSession, setActiveCallSession] = useState<CallSession | null>(null);
   const [incomingCallSession, setIncomingCallSession] = useState<CallSession | null>(null);
   const [inAppToast, setInAppToast] = useState<PushNotification | null>(null);
@@ -1111,7 +1111,7 @@ export default function App() {
         updatedAt: Date.now()
       };
       
-      setActiveCall({ chat, isVideo });
+      setActiveCall({ chat, isVideo, isCaller: true });
       setActiveCallSession(sess);
 
       // Add real call log to Firestore
@@ -2015,6 +2015,9 @@ export default function App() {
       )}
 
       <ActiveCallModal
+        callId={activeCallSession?.id || ''}
+        isCaller={activeCall?.isCaller ?? (activeCallSession?.callerId === currentUser?.id)}
+        currentUserId={currentUser?.id || ''}
         chat={activeCall?.chat || null}
         isVideo={activeCall?.isVideo || false}
         status={activeCallSession?.status || 'ringing'}

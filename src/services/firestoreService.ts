@@ -316,6 +316,29 @@ export function subscribeToUsers(callback: (users: User[]) => void): () => void 
   });
 }
 
+export function subscribeToUserPresence(userId: string, callback: (presence: { status: 'online' | 'away' | 'offline'; lastSeen: string; isOnline: boolean }) => void): () => void {
+  if (!userId) {
+    callback({ status: 'offline', lastSeen: 'Offline', isOnline: false });
+    return () => {};
+  }
+  const userRef = doc(db, 'users', userId);
+  return onSnapshot(userRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const presence = calculateUserPresence(data);
+      callback({
+        status: presence.status,
+        lastSeen: presence.lastSeen,
+        isOnline: presence.status === 'online'
+      });
+    } else {
+      callback({ status: 'offline', lastSeen: 'Offline', isOnline: false });
+    }
+  }, (err) => {
+    console.warn(`Firestore user presence subscription error for ${userId}:`, err);
+  });
+}
+
 export function calculateUserPresence(userDoc: any): { status: 'online' | 'away' | 'offline'; lastSeen: string } {
   if (!userDoc) {
     return { status: 'offline', lastSeen: 'Offline' };
