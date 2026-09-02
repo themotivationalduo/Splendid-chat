@@ -791,6 +791,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
                 onOpenLightbox={onOpenLightbox}
                 onTogglePin={onTogglePin}
                 onScrollToMessage={handleScrollToMessage}
+                onStartCall={onStartCall}
                 editingMessageId={editingMessageId}
                 setEditingMessageId={setEditingMessageId}
                 editingMessageText={editingMessageText}

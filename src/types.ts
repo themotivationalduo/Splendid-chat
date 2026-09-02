@@ -224,7 +224,7 @@ export interface Message {
   isEdited?: boolean;
   editedAt?: number;
   status: 'sending' | 'pending' | 'sent' | 'delivered' | 'read';
-  type: 'text' | 'image' | 'voice' | 'file';
+  type: 'text' | 'image' | 'voice' | 'file' | 'call';
   mediaUrl?: string;
   mediaMeta?: MediaMeta;
   reactions?: Record<string, string[]>;
@@ -232,7 +232,7 @@ export interface Message {
     id: string;
     senderName: string;
     content: string;
-    type?: 'text' | 'image' | 'voice' | 'file';
+    type?: 'text' | 'image' | 'voice' | 'file' | 'call';
     mediaUrl?: string;
     mediaMeta?: MediaMeta;
   };
@@ -253,7 +253,7 @@ export interface Chat {
     timestamp: string;
     senderId: string;
     isRead: boolean;
-    type?: 'text' | 'image' | 'voice' | 'file';
+    type?: 'text' | 'image' | 'voice' | 'file' | 'call';
   };
   unreadCount: number;
   isPinned?: boolean;

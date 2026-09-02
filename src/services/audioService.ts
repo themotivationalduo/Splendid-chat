@@ -317,3 +317,132 @@ export function generateWaveformData(length: number = 24): number[] {
   const pattern = [25, 45, 80, 60, 95, 40, 75, 90, 30, 85, 65, 40, 70, 95, 50, 30, 85, 60, 45, 90, 70, 35, 55, 20];
   return pattern.slice(0, length);
 }
+
+/**
+ * Apply fun voice effects (chipmunk, robotic, deep, radio) to a recorded audio blob
+ */
+export async function applyVoiceFilter(
+  audioBlob: Blob,
+  effect: 'normal' | 'chipmunk' | 'deep' | 'radio' | 'robotic'
+): Promise<RecordingResult> {
+  if (effect === 'normal' || audioBlob.size === 0) {
+    const audioUrl = URL.createObjectURL(audioBlob);
+    return {
+      audioBlob,
+      audioUrl,
+      duration: Math.max(1, Math.round(audioBlob.size / 16000)),
+      waveData: generateWaveformData(24)
+    };
+  }
+
+  try {
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const tempCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const decodedBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+    tempCtx.close();
+
+    const sampleRate = decodedBuffer.sampleRate;
+    const originalDuration = decodedBuffer.duration;
+
+    let targetDuration = originalDuration;
+    let playbackRate = 1.0;
+
+    if (effect === 'chipmunk') playbackRate = 1.5;
+    else if (effect === 'deep') playbackRate = 0.7;
+    else if (effect === 'radio') playbackRate = 1.0;
+    else if (effect === 'robotic') playbackRate = 1.0;
+
+    targetDuration = originalDuration / playbackRate;
+    const numFrames = Math.ceil(sampleRate * targetDuration);
+    const offlineCtx = new (window.OfflineAudioContext || (window as unknown as { webkitOfflineAudioContext: typeof OfflineAudioContext }).webkitOfflineAudioContext)(
+      decodedBuffer.numberOfChannels,
+      Math.max(1, numFrames),
+      sampleRate
+    );
+
+    const source = offlineCtx.createBufferSource();
+    source.buffer = decodedBuffer;
+    source.playbackRate.value = playbackRate;
+
+    let lastNode: AudioNode = source;
+
+    if (effect === 'radio') {
+      const highpass = offlineCtx.createBiquadFilter();
+      highpass.type = 'highpass';
+      highpass.frequency.value = 400;
+
+      const lowpass = offlineCtx.createBiquadFilter();
+      lowpass.type = 'lowpass';
+      lowpass.frequency.value = 3000;
+
+      lastNode.connect(highpass);
+      highpass.connect(lowpass);
+      lastNode = lowpass;
+    } else if (effect === 'robotic') {
+      const shaper = offlineCtx.createWaveShaper();
+      const curve = new Float32Array(44100);
+      const k = 50;
+      for (let i = 0; i < 44100; ++i) {
+        const x = (i * 2) / 44100 - 1;
+        curve[i] = ((3 + k) * x * 20 * (Math.PI / 180)) / (Math.PI + k * Math.abs(x));
+      }
+      shaper.curve = curve;
+      shaper.oversample = '4x';
+
+      const filter = offlineCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1200;
+      filter.Q.value = 3;
+
+      lastNode.connect(shaper);
+      shaper.connect(filter);
+      lastNode = filter;
+    } else if (effect === 'deep') {
+      const bassBoost = offlineCtx.createBiquadFilter();
+      bassBoost.type = 'lowshelf';
+      bassBoost.frequency.value = 250;
+      bassBoost.gain.value = 12;
+
+      lastNode.connect(bassBoost);
+      lastNode = bassBoost;
+    } else if (effect === 'chipmunk') {
+      const trebleBoost = offlineCtx.createBiquadFilter();
+      trebleBoost.type = 'highshelf';
+      trebleBoost.frequency.value = 3000;
+      trebleBoost.gain.value = 6;
+
+      lastNode.connect(trebleBoost);
+      lastNode = trebleBoost;
+    }
+
+    lastNode.connect(offlineCtx.destination);
+    source.start(0);
+
+    const renderedBuffer = await offlineCtx.startRendering();
+    const filteredBlob = audioBufferToWavBlob(renderedBuffer);
+    const audioUrl = URL.createObjectURL(filteredBlob);
+
+    const waveData: number[] = [];
+    for (let i = 0; i < 24; i++) {
+      const val = Math.min(100, Math.max(15, Math.floor(Math.sin(i * 0.5) * 40 + Math.random() * 45 + 30)));
+      waveData.push(val);
+    }
+
+    return {
+      audioBlob: filteredBlob,
+      audioUrl,
+      duration: Math.max(1, Math.round(targetDuration)),
+      waveData
+    };
+  } catch (err) {
+    console.error('Error applying voice filter:', err);
+    const audioUrl = URL.createObjectURL(audioBlob);
+    return {
+      audioBlob,
+      audioUrl,
+      duration: Math.max(1, Math.round(audioBlob.size / 16000)),
+      waveData: generateWaveformData(24)
+    };
+  }
+}
+

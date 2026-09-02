@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, CheckCheck, Clock } from 'lucide-react';
+import { Check, CheckCheck, Clock, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Video, VideoOff } from 'lucide-react';
 import { Message, User } from '../types';
 import { AudioVoicePlayer } from './AudioVoicePlayer';
 
@@ -16,6 +16,7 @@ interface MessageBubbleProps {
   onOpenLightbox: (url: string, content: string) => void;
   onTogglePin: (msg: Message) => void;
   onScrollToMessage?: (messageId: string) => void;
+  onStartCall?: (chat: any, isVideo: boolean) => void;
   editingMessageId: string | null;
   setEditingMessageId: (id: string | null) => void;
   editingMessageText: string;
@@ -44,6 +45,7 @@ export const MessageBubble = React.memo(({
   onOpenLightbox,
   onTogglePin,
   onScrollToMessage,
+  onStartCall,
   editingMessageId,
   setEditingMessageId,
   editingMessageText,
@@ -323,6 +325,86 @@ export const MessageBubble = React.memo(({
             <span>Voice note expired</span>
           </div>
         ))}
+
+        {msg.type === 'call' && (() => {
+          const isVideo = msg.content.includes('video') || msg.content.includes('📹') || msg.mediaMeta?.dimensions?.width === 1;
+          const isMissed = msg.content.toLowerCase().includes('missed') || msg.mediaMeta?.mimeType === 'missed';
+          const isDeclined = msg.content.toLowerCase().includes('declined') || msg.mediaMeta?.mimeType === 'declined';
+          const isCancelled = msg.content.toLowerCase().includes('cancelled') || msg.mediaMeta?.mimeType === 'cancelled';
+          const isOutbound = isUser;
+
+          let callIcon = null;
+          let statusBadgeColor = '';
+          let statusText = '';
+          let iconBg = '';
+
+          if (isMissed) {
+            callIcon = isVideo ? <VideoOff className="w-4 h-4 text-rose-400 stroke-[2.2]" /> : <PhoneMissed className="w-4 h-4 text-rose-400 stroke-[2.2]" />;
+            statusBadgeColor = 'text-rose-300 font-extrabold';
+            iconBg = 'bg-rose-500/20 border-rose-500/30 shadow-xs shadow-rose-500/20';
+            statusText = isOutbound ? (isVideo ? 'Missed Video Call' : 'Missed Voice Call') : (isVideo ? 'Missed Video Call' : 'Missed Voice Call');
+          } else if (isDeclined) {
+            callIcon = isVideo ? <VideoOff className="w-4 h-4 text-amber-400 stroke-[2.2]" /> : <PhoneOff className="w-4 h-4 text-amber-400 stroke-[2.2]" />;
+            statusBadgeColor = 'text-amber-300 font-bold';
+            iconBg = 'bg-amber-500/20 border-amber-500/30';
+            statusText = isVideo ? 'Declined Video Call' : 'Declined Voice Call';
+          } else if (isCancelled) {
+            callIcon = isVideo ? <VideoOff className="w-4 h-4 text-slate-400 stroke-[2.2]" /> : <PhoneOff className="w-4 h-4 text-slate-400 stroke-[2.2]" />;
+            statusBadgeColor = 'text-slate-300 font-semibold';
+            iconBg = 'bg-slate-500/20 border-slate-500/30';
+            statusText = isVideo ? 'Cancelled Video Call' : 'Cancelled Voice Call';
+          } else {
+            callIcon = isVideo ? (
+              <Video className="w-4 h-4 text-emerald-400 stroke-[2.2]" />
+            ) : isOutbound ? (
+              <PhoneOutgoing className="w-4 h-4 text-emerald-400 stroke-[2.2]" />
+            ) : (
+              <PhoneIncoming className="w-4 h-4 text-cyan-400 stroke-[2.2]" />
+            );
+            statusBadgeColor = isOutbound ? 'text-emerald-300 font-bold' : 'text-cyan-300 font-bold';
+            iconBg = isOutbound ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-cyan-500/20 border-cyan-500/30';
+            statusText = isVideo ? 'Video Call' : 'Voice Call';
+          }
+
+          const callDurationSec = msg.mediaMeta?.duration || 0;
+          const formattedDuration = callDurationSec > 0
+            ? `${Math.floor(callDurationSec / 60)}:${(callDurationSec % 60).toString().padStart(2, '0')}`
+            : null;
+
+          return (
+            <div className="flex flex-col gap-2 min-w-[210px] max-w-[260px] py-1 select-none">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 shadow-sm ${iconBg}`}>
+                  {callIcon}
+                </div>
+                <div className="flex flex-col min-w-0 flex-1 text-left">
+                  <span className={`text-[12px] leading-snug truncate ${statusBadgeColor}`}>
+                    {statusText}
+                  </span>
+                  <span className="text-[10px] text-slate-300/80 font-mono">
+                    {formattedDuration ? `Duration: ${formattedDuration}` : (isMissed ? 'No answer' : (isDeclined ? 'Declined' : 'Call ended'))}
+                  </span>
+                </div>
+              </div>
+
+              {/* Interactive Call Back Button */}
+              {onStartCall && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStartCall(chat, isVideo);
+                  }}
+                  className="w-full py-1.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm mt-0.5"
+                  title={`Call back ${chat?.name || ''}`}
+                >
+                  <span className="text-xs">{isVideo ? '📹' : '📞'}</span>
+                  <span>Call back</span>
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Reactions Badge row */}
         {hasReactions && (

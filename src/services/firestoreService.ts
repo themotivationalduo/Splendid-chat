@@ -1156,33 +1156,62 @@ export async function forwardFirestoreMessage(
 
 // ----------------- DRAFT MESSAGE SYNCHRONIZATION ----------------- //
 
+export function saveLocalDraftSync(chatId: string, userId: string, text: string): void {
+  try {
+    if (text && text.trim()) {
+      localStorage.setItem(`splendid_draft_${chatId}_${userId}`, text);
+      localStorage.setItem(`splendid_draft_${chatId}`, text);
+    } else {
+      localStorage.removeItem(`splendid_draft_${chatId}_${userId}`);
+      localStorage.removeItem(`splendid_draft_${chatId}`);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('splendid-draft-updated', {
+        detail: { chatId, userId, text: text ? text.trim() : '' }
+      }));
+    }
+  } catch (e) {
+    console.debug('Failed to save draft to local storage:', e);
+  }
+}
+
 export async function saveChatDraft(chatId: string, userId: string, text: string): Promise<void> {
+  // 1. Immediately store to local storage synchronously (zero lag)
+  saveLocalDraftSync(chatId, userId, text);
+
+  // 2. Sync to Firestore in the background
   try {
     const chatRef = doc(db, 'chats', chatId);
     await updateDoc(chatRef, {
-      [`drafts.${userId}`]: text ? { text, updatedAt: Date.now() } : null
+      [`drafts.${userId}`]: text && text.trim() ? { text: text.trim(), updatedAt: Date.now() } : null
     });
-    // Local backup
-    localStorage.setItem(`splendid_draft_${chatId}_${userId}`, text);
   } catch (e) {
-    localStorage.setItem(`splendid_draft_${chatId}_${userId}`, text);
+    console.debug('Firestore draft sync warning:', e);
   }
 }
 
 export async function clearChatDraft(chatId: string, userId: string): Promise<void> {
+  saveLocalDraftSync(chatId, userId, '');
   try {
     const chatRef = doc(db, 'chats', chatId);
     await updateDoc(chatRef, {
       [`drafts.${userId}`]: null
     });
-    localStorage.removeItem(`splendid_draft_${chatId}_${userId}`);
   } catch (e) {
-    localStorage.removeItem(`splendid_draft_${chatId}_${userId}`);
+    console.debug('Firestore clear draft warning:', e);
   }
 }
 
-export function getCachedChatDraft(chatId: string, userId: string): string {
-  return localStorage.getItem(`splendid_draft_${chatId}_${userId}`) || '';
+export function getCachedChatDraft(chatId: string, userId?: string): string {
+  try {
+    if (userId) {
+      const userDraft = localStorage.getItem(`splendid_draft_${chatId}_${userId}`);
+      if (userDraft) return userDraft;
+    }
+    return localStorage.getItem(`splendid_draft_${chatId}`) || '';
+  } catch (e) {
+    return '';
+  }
 }
 
 export async function markChatMessagesAsRead(chatId: string, currentUserId: string): Promise<void> {
@@ -1660,6 +1689,58 @@ export async function logCallRecord(call: CallLog): Promise<void> {
     });
   } catch (e) {
     console.error('Log call error:', e);
+  }
+}
+
+export async function recordCallLogToChat(
+  chatId: string,
+  caller: User,
+  receiverId: string,
+  isVideo: boolean,
+  status: 'completed' | 'missed' | 'declined' | 'cancelled',
+  durationSeconds: number = 0
+): Promise<void> {
+  try {
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const formatDuration = (sec: number) => {
+      if (sec <= 0) return '';
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    let content = '';
+    if (status === 'completed') {
+      const dur = formatDuration(durationSeconds);
+      content = isVideo ? `📹 Video call (${dur || '0:01'})` : `📞 Voice call (${dur || '0:01'})`;
+    } else if (status === 'missed') {
+      content = isVideo ? '📹 Missed video call' : '📞 Missed voice call';
+    } else if (status === 'declined') {
+      content = isVideo ? '📹 Declined video call' : '📞 Declined voice call';
+    } else {
+      content = isVideo ? '📹 Cancelled video call' : '📞 Cancelled voice call';
+    }
+
+    const callMsgPayload: Omit<Message, 'id'> = {
+      chatId,
+      senderId: caller.id,
+      senderName: caller.fullName || caller.username || 'User',
+      senderAvatar: caller.avatar || '👤',
+      content,
+      timestamp: timeStr,
+      createdAt: Date.now(),
+      status: 'sent',
+      type: 'call',
+      mediaMeta: {
+        duration: durationSeconds,
+        mimeType: status,
+        dimensions: { width: isVideo ? 1 : 0, height: 0 }
+      }
+    };
+
+    await sendFirestoreMessage(chatId, callMsgPayload, caller.id);
+  } catch (err) {
+    console.error('Error recording call log to chat:', err);
   }
 }
 

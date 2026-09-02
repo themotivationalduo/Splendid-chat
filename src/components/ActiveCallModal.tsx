@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
+import { Minimize2, Maximize2, AlertTriangle, PhoneOff, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { Chat, CallRecording } from '../types';
 import { playGlassChimeSound } from '../services/audioService';
 import { sendCallSignal, subscribeToCallSignals, subscribeToUserPresence } from '../services/firestoreService';
@@ -12,7 +14,7 @@ interface ActiveCallModalProps {
   chat: Chat | null;
   isVideo: boolean;
   status?: 'ringing' | 'accepted' | 'declined' | 'ended';
-  onEndCall: () => void;
+  onEndCall: (durationSeconds?: number) => void;
 }
 
 interface SignalStats {
@@ -45,6 +47,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   onEndCall
 }) => {
   const [duration, setDuration] = useState(0);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isCameraOff, setIsCameraOff] = useState(false);
@@ -54,6 +57,10 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [isLocalSpeaking, setIsLocalSpeaking] = useState(false);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [showStatsDrawer, setShowStatsDrawer] = useState(false);
+
+  // WebRTC Call Quality Warning State (>5s poor connection)
+  const [showQualityWarning, setShowQualityWarning] = useState(false);
+  const poorQualityStartTimeRef = useRef<number | null>(null);
 
   // Call Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -256,6 +263,21 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         } else {
           bars = 4;
           quality = 'Excellent';
+        }
+
+        // WebRTC getStats call quality threshold check (>5 seconds duration)
+        const isDegraded = quality === 'Poor' || (currentRtt !== null && currentRtt > 350) || (lossPercent !== null && lossPercent > 10);
+        if (isDegraded && status === 'accepted') {
+          if (poorQualityStartTimeRef.current === null) {
+            poorQualityStartTimeRef.current = Date.now();
+          } else if (Date.now() - poorQualityStartTimeRef.current >= 5000) {
+            setShowQualityWarning(true);
+          }
+        } else {
+          poorQualityStartTimeRef.current = null;
+          if (quality === 'Good' || quality === 'Excellent') {
+            setShowQualityWarning(false);
+          }
         }
 
         setSignalStats({
@@ -794,8 +816,144 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
       stopRecording();
     }
     playGlassChimeSound('incoming');
-    onEndCall();
+    onEndCall(duration);
   };
+
+  if (isMinimized) {
+    return (
+      <motion.div
+        drag
+        dragMomentum={false}
+        dragConstraints={{ left: -160, right: 160, top: -460, bottom: 40 }}
+        className="fixed bottom-24 sm:bottom-20 left-1/2 -translate-x-1/2 z-50 w-[94%] max-w-sm sm:max-w-md select-none touch-none"
+      >
+        {/* Hidden HD Audio Element with autoPlay */}
+        <audio ref={remoteAudioRef} autoPlay playsInline />
+
+        {/* Network Quality Alert in Minimized Floating Bar */}
+        {showQualityWarning && (
+          <div className="mb-2 p-2 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-[11px] font-semibold flex items-center justify-between shadow-lg backdrop-blur-xl animate-in slide-in-from-bottom-2 duration-200">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
+              <span className="truncate">Unstable Network (High Latency)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowQualityWarning(false)}
+              className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/10 hover:bg-white/20 text-white ml-2"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Floating Call Bar with Mirror Glass Styling */}
+        <div className="p-3 rounded-3xl mirror-glass-card border border-white/25 shadow-2xl backdrop-blur-2xl flex items-center justify-between gap-2.5 bg-slate-950/85">
+          
+          {/* Left: Avatar / Mini Video PiP & Info */}
+          <div 
+            onClick={() => setIsMinimized(false)}
+            className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group"
+            title="Click to maximize call"
+          >
+            <div className="relative shrink-0">
+              {isVideo && status === 'accepted' && hasRemoteVideo ? (
+                <div className="w-10 h-10 rounded-2xl overflow-hidden border border-white/30 bg-black">
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className={`w-10 h-10 rounded-2xl bg-slate-800 border flex items-center justify-center text-lg shadow-inner ${
+                  isRemoteSpeaking ? 'border-emerald-400 animate-pulse' : 'border-white/20'
+                }`}>
+                  {chat.avatar || '👤'}
+                </div>
+              )}
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-900 ${
+                targetUserPresence.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+              }`} />
+            </div>
+
+            <div className="flex flex-col min-w-0 text-left">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white truncate max-w-[100px] sm:max-w-[130px]">
+                  {chat.name}
+                </span>
+                {/* Stepped CSS Cellular Signal Bars */}
+                <div className="flex items-end gap-[1.5px] h-2.5 shrink-0" title={`Signal: ${signalStats.quality}`}>
+                  <span className={`w-0.5 rounded-xs ${signalStats.bars >= 1 ? (signalStats.bars === 1 ? 'bg-rose-500 h-1' : signalStats.bars === 2 ? 'bg-amber-400 h-1' : 'bg-emerald-400 h-1') : 'bg-white/20 h-1'}`} />
+                  <span className={`w-0.5 rounded-xs ${signalStats.bars >= 2 ? (signalStats.bars === 2 ? 'bg-amber-400 h-1.5' : 'bg-emerald-400 h-1.5') : 'bg-white/20 h-1.5'}`} />
+                  <span className={`w-0.5 rounded-xs ${signalStats.bars >= 3 ? 'bg-emerald-400 h-2' : 'bg-white/20 h-2'}`} />
+                  <span className={`w-0.5 rounded-xs ${signalStats.bars >= 4 ? 'bg-emerald-400 h-2.5' : 'bg-white/20 h-2.5'}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-300 font-mono">
+                <span className="text-emerald-400 font-bold">
+                  {status === 'ringing' ? 'Calling...' : formatTimer(duration)}
+                </span>
+                {isRecording && (
+                  <span className="text-rose-400 font-bold flex items-center gap-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                    <span>REC</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Quick Action Controls */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMuted(!isMuted);
+                playGlassChimeSound('lock');
+              }}
+              className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm transition-all active:scale-95 cursor-pointer ${
+                isMuted
+                  ? 'bg-rose-500/30 border border-rose-500/50 text-rose-300'
+                  : 'bg-white/10 hover:bg-white/20 border border-white/15 text-white'
+              }`}
+              title={isMuted ? 'Unmute' : 'Mute'}
+            >
+              {isMuted ? <MicOff className="w-4 h-4 text-rose-300" /> : <Mic className="w-4 h-4 text-white" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMinimized(false);
+              }}
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+              title="Maximize call view"
+            >
+              <Maximize2 className="w-4 h-4 text-blue-300" />
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEnd();
+              }}
+              className="w-9 h-9 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white flex items-center justify-center shadow-lg shadow-rose-600/30 transition-all active:scale-95 cursor-pointer"
+              title="End Call"
+            >
+              <PhoneOff className="w-4 h-4" />
+            </button>
+          </div>
+
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-2xl animate-in fade-in duration-150 select-none">
@@ -807,7 +965,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         {/* Top Header: Availability Indicator & Signal Strength Meter */}
         <div className="w-full flex flex-col items-center space-y-2 pt-1">
           
-          {/* Top Row: User Availability Badge + Signal Strength Indicator */}
+          {/* Top Row: User Availability Badge + Signal Strength Indicator + Minimize Button */}
           <div className="w-full flex items-center justify-between gap-2 px-1">
             
             {/* 1. User Availability Indicator: "user is online" / "user is offline" */}
@@ -835,53 +993,65 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               </span>
             </div>
 
-            {/* 2. WebRTC Signal Strength Indicator (CSS Icons) */}
-            <button
-              type="button"
-              id="signal-strength-indicator"
-              onClick={() => setShowStatsDrawer(!showStatsDrawer)}
-              className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 backdrop-blur-md flex items-center gap-2 text-[11px] font-semibold text-slate-200 transition-all active:scale-95 cursor-pointer"
-              title="Click to toggle WebRTC Network Stats"
-            >
-              {/* Stepped CSS Cellular/WiFi Signal Bars */}
-              <div className="flex items-end gap-[2.5px] h-3.5 pb-0.5" aria-label={`Signal strength: ${signalStats.quality}`}>
-                {/* Bar 1 (Lowest) */}
-                <span
-                  className={`w-1 rounded-xs transition-all duration-300 ${
-                    signalStats.bars >= 1
-                      ? (signalStats.bars === 1 ? 'bg-rose-500 h-1.5 shadow-xs shadow-rose-500/50' : signalStats.bars === 2 ? 'bg-amber-400 h-1.5' : 'bg-emerald-400 h-1.5')
-                      : 'bg-white/20 h-1.5'
-                  }`}
-                />
-                {/* Bar 2 */}
-                <span
-                  className={`w-1 rounded-xs transition-all duration-300 ${
-                    signalStats.bars >= 2
-                      ? (signalStats.bars === 2 ? 'bg-amber-400 h-2.5 shadow-xs shadow-amber-500/50' : 'bg-emerald-400 h-2.5')
-                      : 'bg-white/20 h-2.5'
-                  }`}
-                />
-                {/* Bar 3 */}
-                <span
-                  className={`w-1 rounded-xs transition-all duration-300 ${
-                    signalStats.bars >= 3 ? 'bg-emerald-400 h-3' : 'bg-white/20 h-3'
-                  }`}
-                />
-                {/* Bar 4 (Highest) */}
-                <span
-                  className={`w-1 rounded-xs transition-all duration-300 ${
-                    signalStats.bars >= 4 ? 'bg-emerald-400 h-3.5 shadow-xs shadow-emerald-500/60' : 'bg-white/20 h-3.5'
-                  }`}
-                />
-              </div>
+            <div className="flex items-center gap-1.5">
+              {/* 2. WebRTC Signal Strength Indicator (CSS Icons) */}
+              <button
+                type="button"
+                id="signal-strength-indicator"
+                onClick={() => setShowStatsDrawer(!showStatsDrawer)}
+                className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 backdrop-blur-md flex items-center gap-2 text-[11px] font-semibold text-slate-200 transition-all active:scale-95 cursor-pointer"
+                title="Click to toggle WebRTC Network Stats"
+              >
+                {/* Stepped CSS Cellular/WiFi Signal Bars */}
+                <div className="flex items-end gap-[2.5px] h-3.5 pb-0.5" aria-label={`Signal strength: ${signalStats.quality}`}>
+                  {/* Bar 1 (Lowest) */}
+                  <span
+                    className={`w-1 rounded-xs transition-all duration-300 ${
+                      signalStats.bars >= 1
+                        ? (signalStats.bars === 1 ? 'bg-rose-500 h-1.5 shadow-xs shadow-rose-500/50' : signalStats.bars === 2 ? 'bg-amber-400 h-1.5' : 'bg-emerald-400 h-1.5')
+                        : 'bg-white/20 h-1.5'
+                    }`}
+                  />
+                  {/* Bar 2 */}
+                  <span
+                    className={`w-1 rounded-xs transition-all duration-300 ${
+                      signalStats.bars >= 2
+                        ? (signalStats.bars === 2 ? 'bg-amber-400 h-2.5 shadow-xs shadow-amber-500/50' : 'bg-emerald-400 h-2.5')
+                        : 'bg-white/20 h-2.5'
+                    }`}
+                  />
+                  {/* Bar 3 */}
+                  <span
+                    className={`w-1 rounded-xs transition-all duration-300 ${
+                      signalStats.bars >= 3 ? 'bg-emerald-400 h-3' : 'bg-white/20 h-3'
+                    }`}
+                  />
+                  {/* Bar 4 (Highest) */}
+                  <span
+                    className={`w-1 rounded-xs transition-all duration-300 ${
+                      signalStats.bars >= 4 ? 'bg-emerald-400 h-3.5 shadow-xs shadow-emerald-500/60' : 'bg-white/20 h-3.5'
+                    }`}
+                  />
+                </div>
 
-              {/* Quality Label & RTT */}
-              <span className="text-[10px] font-mono font-bold text-slate-300">
-                {status === 'accepted' ? (
-                  signalStats.rttMs !== null ? `${signalStats.rttMs}ms` : signalStats.quality
-                ) : 'P2P'}
-              </span>
-            </button>
+                {/* Quality Label & RTT */}
+                <span className="text-[10px] font-mono font-bold text-slate-300">
+                  {status === 'accepted' ? (
+                    signalStats.rttMs !== null ? `${signalStats.rttMs}ms` : signalStats.quality
+                  ) : 'P2P'}
+                </span>
+              </button>
+
+              {/* 3. Minimize Button */}
+              <button
+                type="button"
+                onClick={() => setIsMinimized(true)}
+                className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-slate-200 transition-all active:scale-95 cursor-pointer"
+                title="Minimize call window to floating bar"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
           </div>
 
@@ -902,6 +1072,25 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
                 <div>Bitrate: <span className="font-bold text-white">{signalStats.bitrateKbps !== null ? `${signalStats.bitrateKbps} kbps` : 'HD Stream'}</span></div>
                 <div>Jitter: <span className="font-bold text-white">{signalStats.jitterMs !== null ? `${signalStats.jitterMs} ms` : '1 ms'}</span></div>
               </div>
+            </div>
+          )}
+
+          {/* 5-second WebRTC Poor Quality Warning Toast */}
+          {showQualityWarning && (
+            <div className="w-full px-3 py-2 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in slide-in-from-top-1 duration-150 backdrop-blur-md">
+              <div className="flex items-center gap-2 text-left">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                <span className="text-[11px] leading-tight">
+                  Unstable network connection detected. Call quality may be degraded.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQualityWarning(false)}
+                className="ml-2 px-1.5 py-0.5 rounded-md bg-white/10 hover:bg-white/20 text-white text-[10px]"
+              >
+                ✕
+              </button>
             </div>
           )}
 

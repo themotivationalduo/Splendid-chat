@@ -58,6 +58,7 @@ import {
   saveChatDraft,
   createCallSession,
   updateCallStatus,
+  recordCallLogToChat,
   subscribeToIncomingCalls,
   subscribeToCallSession,
   subscribeToActiveStatuses,
@@ -1938,6 +1939,19 @@ export default function App() {
               <button
                 type="button"
                 onClick={async () => {
+                  if (incomingCallSession && currentUser) {
+                    const existingChat = chats.find(c => c.participant?.id === incomingCallSession.callerId);
+                    if (existingChat) {
+                      recordCallLogToChat(
+                        existingChat.id,
+                        currentUser,
+                        incomingCallSession.callerId,
+                        incomingCallSession.isVideo,
+                        'declined',
+                        0
+                      ).catch(console.error);
+                    }
+                  }
                   await updateCallStatus(incomingCallSession.id, 'declined');
                   setIncomingCallSession(null);
                 }}
@@ -2021,7 +2035,19 @@ export default function App() {
         chat={activeCall?.chat || null}
         isVideo={activeCall?.isVideo || false}
         status={activeCallSession?.status || 'ringing'}
-        onEndCall={async () => {
+        onEndCall={async (durSec = 0) => {
+          if (activeCall && currentUser) {
+            const isCompleted = durSec > 0 || activeCallSession?.status === 'accepted';
+            const status = isCompleted ? 'completed' : (activeCall.isCaller ? 'missed' : 'cancelled');
+            recordCallLogToChat(
+              activeCall.chat.id,
+              currentUser,
+              activeCall.chat.participant?.id || '',
+              activeCall.isVideo,
+              status,
+              durSec
+            ).catch(console.error);
+          }
           if (activeCallSession) {
             await updateCallStatus(activeCallSession.id, 'ended');
           }
