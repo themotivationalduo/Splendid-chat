@@ -497,6 +497,7 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
               // ONLY process if sent by recipient (d.senderId !== userId)
               if (d.senderId && d.senderId !== userId) {
                 let finalMediaUrl = d.mediaUrl;
+                const isMedia = d.type === 'image' || d.type === 'voice' || d.type === 'file' || !!d.mediaUrl || isExpiringMediaOrStickerOrEmoji(d);
                 if (d.mediaUrl && (d.mediaUrl.includes('firebasestorage.googleapis.com') || d.mediaUrl.includes('temp_media'))) {
                   try {
                     const res = await fetch(d.mediaUrl);
@@ -516,7 +517,7 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
                   content: d.content || d.text || '',
                   timestamp: d.timestamp || '',
                   createdAt: d.createdAt || Date.now(),
-                  expiresAt: d.expiresAt,
+                  expiresAt: d.expiresAt || ((d.createdAt || Date.now()) + MEDIA_EXPIRATION_MS),
                   isExpired: false,
                   status: 'delivered',
                   type: d.type || 'text',
@@ -527,7 +528,9 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
                 };
 
                 await saveMessageToIndexedDB(msgObj);
-                deleteDoc(doc(db, 'chats', docSnap.id, 'messages', msgDoc.id)).catch(() => {});
+                if (isMedia) {
+                  deleteDoc(doc(db, 'chats', docSnap.id, 'messages', msgDoc.id)).catch(() => {});
+                }
 
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('splendid-incoming-message', {
@@ -778,6 +781,8 @@ export function subscribeToChatMessages(
       if (!isOutbound) {
         let finalMediaUrl = d.mediaUrl;
 
+      const isMedia = d.type === 'image' || d.type === 'voice' || d.type === 'file' || !!d.mediaUrl || isExpiringMediaOrStickerOrEmoji(d);
+
         // If mediaUrl is stored in temporary Firebase Storage (because receiver was offline when sent)
         if (d.mediaUrl && (d.mediaUrl.includes('firebasestorage.googleapis.com') || d.mediaUrl.includes('temp_media'))) {
           try {
@@ -826,10 +831,13 @@ export function subscribeToChatMessages(
         await saveMessageToIndexedDB(msgObj);
         hasNewDeliveredDocs = true;
 
-        // ONLY RECIPIENT DELETES FROM FIRESTORE QUEUE
-        deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id)).catch((err) => {
-          console.debug('Ephemeral queue deletion notice:', err);
-        });
+        // ONLY DELETE IMMEDIATELY FROM FIRESTORE QUEUE IF IT IS A MEDIA FILE.
+        // TEXT-BASED MESSAGES ARE RETAINED FOR 24 HOURS.
+        if (isMedia) {
+          deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id)).catch((err) => {
+            console.debug('Ephemeral queue deletion notice:', err);
+          });
+        }
       }
     }
 
@@ -870,21 +878,18 @@ export async function sendFirestoreMessage(
     console.warn('Error checking chat disappearing mode:', e);
   }
 
-  const expiresAt = isExpiring ? now + MEDIA_EXPIRATION_MS : undefined;
+  const expiresAt = now + MEDIA_EXPIRATION_MS;
 
   const fullMsg: Message = {
     ...message,
     id: msgDocRef.id,
     chatId,
     createdAt: now,
+    expiresAt,
     status: 'sent',
     isForwarded: message.isForwarded || false,
     forwardedFrom: message.forwardedFrom || undefined
   };
-
-  if (expiresAt) {
-    fullMsg.expiresAt = expiresAt;
-  }
 
   // 1. SAVE PERMANENTLY TO SENDER'S LOCAL INDEXEDDB
   await saveMessageToIndexedDB(fullMsg);
@@ -976,7 +981,7 @@ export async function sendFirestoreMessage(
           recipientId,
           userId: recipientId,
           senderId: currentUserId,
-          title: message.senderName || 'New Message',
+          title: 'SPLENDID CHAT',
           body: bodyPreview,
           timestamp: 'Just now',
           chatId,
@@ -1002,7 +1007,7 @@ export async function sendAdminNotification(targetUserId: string, title: string,
       recipientId: targetUserId,
       userId: targetUserId,
       senderId: 'admin',
-      title,
+      title: 'SPLENDID CHAT',
       body,
       timestamp: 'Just now',
       isRead: false,
@@ -1569,15 +1574,25 @@ export function subscribeToUserNotifications(
   callback: (notifications: PushNotification[]) => void
 ): () => void {
   const notifsRef = collection(db, 'notifications');
+  const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
   
   return onSnapshot(notifsRef, (snapshot) => {
     const list: PushNotification[] = [];
     snapshot.forEach(docSnap => {
       const d = docSnap.data();
+      const createdAt = d.createdAt || Date.now();
+
+      // Automatically expire and delete notifications older than 2 days
+      if (now - createdAt > TWO_DAYS_MS) {
+        deleteDoc(doc(db, 'notifications', docSnap.id)).catch(() => {});
+        return;
+      }
+
       if (d.recipientId === userId || d.userId === userId) {
         list.push({
           id: docSnap.id,
-          title: d.title || 'Notification',
+          title: 'SPLENDID CHAT',
           body: d.body || '',
           timestamp: d.timestamp || 'Just now',
           chatId: d.chatId,
@@ -1585,7 +1600,7 @@ export function subscribeToUserNotifications(
           isRead: d.isRead || false,
           type: d.type || 'message',
           avatar: d.avatar || '💬',
-          createdAt: d.createdAt || Date.now(),
+          createdAt,
           isAdmin: d.isAdmin || false
         });
       }

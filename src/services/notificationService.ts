@@ -52,7 +52,7 @@ export function triggerPushNotification(
 
   const notificationItem: PushNotification = {
     id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    title,
+    title: 'SPLENDID CHAT',
     body,
     timestamp: 'Just now',
     chatId,
@@ -71,7 +71,7 @@ export function triggerPushNotification(
   // 2. Trigger native OS push notification if granted
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      new Notification(`SPLENDID: ${title}`, {
+      new Notification('SPLENDID CHAT', {
         body,
         icon: '/favicon.ico',
         tag: chatId || 'splendid_chat',
