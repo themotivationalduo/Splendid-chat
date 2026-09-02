@@ -221,6 +221,8 @@ export interface Message {
   isExpired?: boolean;
   isForwarded?: boolean;
   forwardedFrom?: string;
+  isEdited?: boolean;
+  editedAt?: number;
   status: 'sending' | 'pending' | 'sent' | 'delivered' | 'read';
   type: 'text' | 'image' | 'voice' | 'file';
   mediaUrl?: string;

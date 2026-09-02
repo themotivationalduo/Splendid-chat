@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, useMotionValue, useTransform } from 'motion/react';
 import { User } from '../types';
 import { normalizePhoneNumber, subscribeToUsers, deleteContactUser } from '../services/firestoreService';
 import { playGlassChimeSound } from '../services/audioService';
@@ -11,6 +12,141 @@ interface StartNewChatModalProps {
   onOpenCreateGroup: () => void;
   onShowSuccessModal?: (type: 'status' | 'profile' | 'logout' | 'delete' | 'generic', title: string, subtitle?: string) => void;
 }
+
+interface SwipeableModalContactItemProps {
+  user: User;
+  onStartChat: (user: User) => void;
+  onDeleteContact: (user: User) => void;
+}
+
+const SwipeableModalContactItem: React.FC<SwipeableModalContactItemProps> = ({
+  user,
+  onStartChat,
+  onDeleteContact
+}) => {
+  const x = useMotionValue(0);
+  const isDraggingRef = useRef(false);
+  const dragDistRef = useRef(0);
+
+  const deleteOpacity = useTransform(x, [10, 40, 70], [0, 0.6, 1]);
+  const deleteScale = useTransform(x, [10, 40, 70], [0.8, 0.95, 1.05]);
+
+  const chatOpacity = useTransform(x, [-10, -40, -70], [0, 0.6, 1]);
+  const chatScale = useTransform(x, [-10, -40, -70], [0.8, 0.95, 1.05]);
+
+  const handleDragEnd = (_: any, info: { offset: { x: number; y: number }; velocity: { x: number; y: number } }) => {
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 150);
+
+    const offsetX = info.offset.x;
+    const velocityX = info.velocity.x;
+
+    if (offsetX > 60 || velocityX > 250) {
+      if (navigator.vibrate) navigator.vibrate(40);
+      onDeleteContact(user);
+    } else if (offsetX < -60 || velocityX < -250) {
+      if (navigator.vibrate) navigator.vibrate(40);
+      onStartChat(user);
+    }
+  };
+
+  const handleClick = () => {
+    if (isDraggingRef.current || Math.abs(dragDistRef.current) > 6) return;
+    onStartChat(user);
+  };
+
+  return (
+    <div className="relative w-full overflow-hidden rounded-xl select-none touch-pan-y">
+      {/* Left underlay: Delete */}
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          if (navigator.vibrate) navigator.vibrate(40);
+          onDeleteContact(user);
+        }}
+        className="absolute inset-0 z-0 flex items-center justify-start pl-3.5 bg-gradient-to-r from-rose-600/30 via-rose-500/15 to-transparent border border-rose-500/30 text-rose-300 rounded-xl cursor-pointer"
+      >
+        <motion.div
+          style={{ opacity: deleteOpacity, scale: deleteScale }}
+          className="flex items-center gap-1.5 font-bold text-xs text-rose-300"
+        >
+          <span>🗑️</span>
+          <span>Delete</span>
+        </motion.div>
+      </div>
+
+      {/* Right underlay: Chat / Pin */}
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          if (navigator.vibrate) navigator.vibrate(40);
+          onStartChat(user);
+        }}
+        className="absolute inset-0 z-0 flex items-center justify-end pr-3.5 bg-gradient-to-l from-blue-600/30 via-blue-500/15 to-transparent border border-blue-500/30 text-blue-300 rounded-xl cursor-pointer"
+      >
+        <motion.div
+          style={{ opacity: chatOpacity, scale: chatScale }}
+          className="flex items-center gap-1.5 font-bold text-xs text-blue-300"
+        >
+          <span>💬 Start Chat</span>
+        </motion.div>
+      </div>
+
+      {/* Foreground Contact Card */}
+      <motion.div
+        drag="x"
+        dragDirectionLock
+        dragConstraints={{ left: -90, right: 90 }}
+        dragElastic={0.2}
+        style={{ x }}
+        onDragStart={() => {
+          isDraggingRef.current = true;
+          dragDistRef.current = 0;
+        }}
+        onDrag={(_, info) => {
+          dragDistRef.current = info.offset.x;
+        }}
+        onDragEnd={handleDragEnd}
+        onClick={handleClick}
+        className="relative z-10 flex items-center justify-between p-2 rounded-xl bg-[#131622]/95 border border-white/5 hover:border-white/15 transition-colors cursor-pointer group select-none shadow-sm"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-lg shrink-0">
+            {user.avatar || '👤'}
+          </div>
+          <div className="min-w-0">
+            <h5 className="text-xs font-bold text-slate-200 group-hover:text-blue-400 truncate">
+              @{user.username}
+            </h5>
+            <p className="text-[10px] text-slate-400 font-mono truncate">
+              {user.fullName} • 📱 {user.allowPhoneNumberVisibility !== false ? user.phoneNumber : 'Hidden'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => onDeleteContact(user)}
+            className="w-7 h-7 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/20 text-rose-400 text-xs flex items-center justify-center transition-colors"
+            title="Delete Contact"
+          >
+            🗑️
+          </button>
+          <button
+            type="button"
+            onClick={() => onStartChat(user)}
+            className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600 border border-blue-500/30 text-blue-300 hover:text-white text-[11px] font-bold transition-all shrink-0 flex items-center gap-1 cursor-pointer"
+          >
+            <span>💬</span>
+            <span>Chat</span>
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 export const StartNewChatModal: React.FC<StartNewChatModalProps> = ({
   isOpen,
@@ -282,72 +418,31 @@ export const StartNewChatModal: React.FC<StartNewChatModalProps> = ({
         {/* Directory of Registered Contacts on SPLENDID CHAT */}
         <div className="space-y-2 pt-1">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-            <span>👥 Registered Contacts Directory (Hold to delete)</span>
+            <span>👥 Registered Contacts Directory</span>
             <span className="text-[11px] text-slate-500">{registeredUsers.length} contact{registeredUsers.length === 1 ? '' : 's'}</span>
           </div>
 
-          <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 divide-y divide-white/5 custom-scrollbar">
+          <div className="flex items-center justify-between px-1 text-[10px] text-slate-500 font-medium">
+            <span className="text-rose-400/80">👉 Slide right: Delete</span>
+            <span className="text-blue-400/80">Slide left: Chat 👈</span>
+          </div>
+
+          <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
             {registeredUsers.length === 0 ? (
               <div className="p-4 text-center rounded-2xl bg-white/[0.02] border border-white/5 text-slate-500 text-xs">
                 No other contacts registered yet. Create another contact or share the app to connect!
               </div>
             ) : (
-              registeredUsers.map((u) => (
-                <div
-                  key={u.id}
-                  onClick={() => handleStartChat(u)}
-                  onMouseDown={() => handleTouchStart(u)}
-                  onMouseUp={handleTouchEnd}
-                  onMouseLeave={handleTouchEnd}
-                  onTouchStart={() => handleTouchStart(u)}
-                  onTouchEnd={handleTouchEnd}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setContactToDelete(u);
-                  }}
-                  className="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 transition-all cursor-pointer group select-none active:scale-[0.98]"
-                  title="Tap to chat • Hold or right-click to delete contact"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-lg shrink-0">
-                      {u.avatar || '👤'}
-                    </div>
-                    <div className="min-w-0">
-                      <h5 className="text-xs font-bold text-slate-200 group-hover:text-blue-400 truncate">
-                        @{u.username}
-                      </h5>
-                      <p className="text-[10px] text-slate-400 font-mono truncate">
-                        {u.fullName} • 📱 {u.allowPhoneNumberVisibility !== false ? u.phoneNumber : 'Hidden'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setContactToDelete(u);
-                      }}
-                      className="w-7 h-7 rounded-lg bg-blue-500/10 hover:bg-blue-500/30 border border-blue-500/20 text-blue-400 hover:text-blue-300 text-xs flex items-center justify-center transition-colors"
-                      title="Delete Contact"
-                    >
-                      🗑️
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartChat(u);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600 border border-blue-500/30 text-blue-300 hover:text-white text-[11px] font-bold transition-all shrink-0 flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>💬</span>
-                      <span>Chat</span>
-                    </button>
-                  </div>
-                </div>
-              ))
+              registeredUsers.map((u) => {
+                return (
+                  <SwipeableModalContactItem
+                    key={u.id}
+                    user={u}
+                    onStartChat={handleStartChat}
+                    onDeleteContact={(target) => setContactToDelete(target)}
+                  />
+                );
+              })
             )}
           </div>
         </div>

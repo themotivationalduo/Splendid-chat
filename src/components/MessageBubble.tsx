@@ -107,7 +107,11 @@ export const MessageBubble = React.memo(({
       onMouseMove={(e) => handleDragMove(e.clientX, e.clientY)}
       onMouseUp={() => handleDragEnd(msg)}
       onMouseLeave={() => handleDragEnd(msg)}
-      className={`flex items-end gap-2 w-full group ${isUser ? 'justify-end' : 'justify-start'} mb-1`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setActiveReactionMessageId(msg.id);
+      }}
+      className={`flex items-end gap-2 w-full group ${isUser ? 'justify-end' : 'justify-start'} mb-1 select-none`}
     >
       {!isUser && (
         <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm shadow-sm shrink-0">
@@ -350,6 +354,9 @@ export const MessageBubble = React.memo(({
             isUser ? 'text-white/80' : 'text-slate-400'
           }`}
         >
+          {msg.isEdited && (
+            <span className="opacity-75 italic text-[8px] tracking-tight">edited</span>
+          )}
           <span>{msg.timestamp}</span>
           {isUser && (() => {
             const isRead = msg.status === 'read';

@@ -1,6 +1,181 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, useMotionValue, useTransform } from 'motion/react';
 import { User } from '../types';
 import { subscribeToUsers, deleteContactUser } from '../services/firestoreService';
+
+interface SwipeableDirectoryUserItemProps {
+  user: User;
+  isSelf: boolean;
+  displayUsername: string;
+  onOpenProfile: (user: User) => void;
+  onStartChat: (user: User) => void;
+  onDeleteContact: (user: User) => void;
+}
+
+const SwipeableDirectoryUserItem: React.FC<SwipeableDirectoryUserItemProps> = ({
+  user,
+  isSelf,
+  displayUsername,
+  onOpenProfile,
+  onStartChat,
+  onDeleteContact
+}) => {
+  const x = useMotionValue(0);
+  const isDraggingRef = useRef(false);
+  const dragDistRef = useRef(0);
+
+  const deleteOpacity = useTransform(x, [10, 40, 70], [0, 0.6, 1]);
+  const deleteScale = useTransform(x, [10, 40, 70], [0.8, 0.95, 1.05]);
+
+  const chatOpacity = useTransform(x, [-10, -40, -70], [0, 0.6, 1]);
+  const chatScale = useTransform(x, [-10, -40, -70], [0.8, 0.95, 1.05]);
+
+  const handleDragEnd = (_: any, info: { offset: { x: number; y: number }; velocity: { x: number; y: number } }) => {
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 150);
+
+    const offsetX = info.offset.x;
+    const velocityX = info.velocity.x;
+
+    if (!isSelf && (offsetX > 60 || velocityX > 250)) {
+      if (navigator.vibrate) navigator.vibrate(40);
+      onDeleteContact(user);
+    } else if (!isSelf && (offsetX < -60 || velocityX < -250)) {
+      if (navigator.vibrate) navigator.vibrate(40);
+      onStartChat(user);
+    }
+  };
+
+  const handleClick = () => {
+    if (isDraggingRef.current || Math.abs(dragDistRef.current) > 6) return;
+    onOpenProfile(user);
+  };
+
+  return (
+    <div className="relative w-full overflow-hidden rounded-2xl select-none touch-pan-y">
+      {/* Left underlay: Delete */}
+      {!isSelf && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            if (navigator.vibrate) navigator.vibrate(40);
+            onDeleteContact(user);
+          }}
+          className="absolute inset-0 z-0 flex items-center justify-start pl-4 bg-gradient-to-r from-rose-600/30 via-rose-500/15 to-transparent border border-rose-500/30 text-rose-300 rounded-2xl cursor-pointer"
+        >
+          <motion.div
+            style={{ opacity: deleteOpacity, scale: deleteScale }}
+            className="flex items-center gap-1.5 font-bold text-xs text-rose-300"
+          >
+            <span>🗑️</span>
+            <span>Delete</span>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Right underlay: Chat */}
+      {!isSelf && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            if (navigator.vibrate) navigator.vibrate(40);
+            onStartChat(user);
+          }}
+          className="absolute inset-0 z-0 flex items-center justify-end pr-4 bg-gradient-to-l from-blue-600/30 via-blue-500/15 to-transparent border border-blue-500/30 text-blue-300 rounded-2xl cursor-pointer"
+        >
+          <motion.div
+            style={{ opacity: chatOpacity, scale: chatScale }}
+            className="flex items-center gap-1.5 font-bold text-xs text-blue-300"
+          >
+            <span>💬 Chat</span>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Foreground card */}
+      <motion.div
+        drag={isSelf ? false : 'x'}
+        dragDirectionLock
+        dragConstraints={{ left: -90, right: 90 }}
+        dragElastic={0.2}
+        style={{ x }}
+        onDragStart={() => {
+          isDraggingRef.current = true;
+          dragDistRef.current = 0;
+        }}
+        onDrag={(_, info) => {
+          dragDistRef.current = info.offset.x;
+        }}
+        onDragEnd={handleDragEnd}
+        onClick={handleClick}
+        className={`relative z-10 p-3 rounded-2xl border transition-all flex items-center justify-between gap-2.5 cursor-pointer select-none ${
+          isSelf
+            ? 'bg-blue-950/20 border-blue-500/30'
+            : 'bg-[#131622]/95 border-white/5 hover:border-blue-500/30'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-900 border border-white/10 flex items-center justify-center text-xl text-white shrink-0 shadow-sm">
+            <span>{user.avatar || '👤'}</span>
+            <span
+              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121418] ${
+                user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
+              }`}
+            />
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-xs text-slate-100 truncate hover:text-blue-400 transition-colors">
+                {displayUsername}
+              </span>
+              {isSelf && (
+                <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 text-[9px] font-bold">
+                  You
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 truncate">
+              {user.fullName} • {user.phoneNumber}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {!isSelf && (
+            <button
+              onClick={() => onDeleteContact(user)}
+              className="w-8 h-8 rounded-xl bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 flex items-center justify-center text-xs transition-colors"
+              title="Delete Contact"
+            >
+              🗑️
+            </button>
+          )}
+
+          <button
+            onClick={() => onOpenProfile(user)}
+            className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center text-xs"
+            title="View Profile Info"
+          >
+            ℹ️
+          </button>
+
+          {!isSelf && (
+            <button
+              onClick={() => onStartChat(user)}
+              className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+              title="Send Message"
+            >
+              <span>💬</span>
+              <span>Chat</span>
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -237,6 +412,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         )}
 
         {/* Directory List */}
+        <div className="flex items-center justify-between px-1 text-[10px] text-slate-500 font-medium">
+          <span className="text-rose-400/80">👉 Slide right: Delete</span>
+          <span className="text-blue-400/80">Slide left: Chat 👈</span>
+        </div>
+
         <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-[220px]">
           {filteredUsers.length === 0 ? (
             <div className="py-12 text-center text-slate-400 space-y-2">
@@ -252,94 +432,22 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               const displayUsername = `@${(user.username || user.fullName).replace(/^@/, '')}`;
 
               return (
-                <div
+                <SwipeableDirectoryUserItem
                   key={user.id}
-                  className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-2.5 cursor-pointer select-none active:scale-[0.98] ${
-                    isSelf
-                      ? 'bg-blue-950/20 border-blue-500/30'
-                      : 'mirror-glass-input border-white/5 hover:border-blue-500/30'
-                  }`}
-                  onClick={() => {
-                    if (isLongPressTriggeredRef.current) {
-                      isLongPressTriggeredRef.current = false;
-                      return;
-                    }
-                    if (onOpenUserProfile) onOpenUserProfile(user);
+                  user={user}
+                  isSelf={isSelf}
+                  displayUsername={displayUsername}
+                  onOpenProfile={(target) => {
+                    if (onOpenUserProfile) onOpenUserProfile(target);
                   }}
-                  onMouseDown={() => handleTouchStart(user)}
-                  onMouseUp={handleTouchEnd}
-                  onMouseLeave={handleTouchEnd}
-                  onTouchStart={() => handleTouchStart(user)}
-                  onTouchEnd={handleTouchEnd}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    if (!isSelf) setContactToDelete(user);
+                  onStartChat={(target) => {
+                    onStartChatWithUser(target);
+                    onClose();
                   }}
-                  title="Tap to view • Hold or right-click to delete contact"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-900 border border-white/10 flex items-center justify-center text-xl text-white shrink-0 shadow-sm">
-                      <span>{user.avatar || '👤'}</span>
-                      <span
-                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#121418] ${
-                          user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
-                        }`}
-                      />
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-slate-100 truncate hover:text-blue-400 transition-colors">
-                          {displayUsername}
-                        </span>
-                        {isSelf && (
-                          <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 text-[9px] font-bold">
-                            You
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-400 truncate">
-                        {user.fullName} • {user.phoneNumber}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {!isSelf && (
-                      <button
-                        onClick={() => setContactToDelete(user)}
-                        className="w-8 h-8 rounded-xl bg-blue-500/10 hover:bg-blue-500/30 text-blue-400 hover:text-blue-300 border border-blue-500/20 flex items-center justify-center text-xs transition-colors"
-                        title="Delete Contact"
-                      >
-                        🗑️
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => {
-                        if (onOpenUserProfile) onOpenUserProfile(user);
-                      }}
-                      className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center text-xs"
-                      title="View Profile Info"
-                    >
-                      ℹ️
-                    </button>
-
-                    {!isSelf && (
-                      <button
-                        onClick={() => {
-                          onStartChatWithUser(user);
-                          onClose();
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                        title="Send Message"
-                      >
-                        <span>💬</span>
-                        <span>Chat</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  onDeleteContact={(target) => {
+                    setContactToDelete(target);
+                  }}
+                />
               );
             })
           )}

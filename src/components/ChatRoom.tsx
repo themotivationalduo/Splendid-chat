@@ -15,6 +15,7 @@ import {
   toggleChatDisappearingMode,
   updateChatTheme
 } from '../services/firestoreService';
+import { peerService } from '../services/peerService';
 import { GroupSettingsModal } from './GroupSettingsModal';
 import { MediaGalleryModal } from './MediaGalleryModal';
 
@@ -99,11 +100,34 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
   }, []);
 
   const handleSaveEdit = async (msg: Message) => {
-    if (editingMessageText.trim() && editingMessageText !== msg.content) {
-      await updateFirestoreMessage(chat.id, msg.id, editingMessageText);
+    const textToSave = (inputText || editingMessageText).trim();
+    if (textToSave && textToSave !== msg.content) {
+      // Check 15-minute edit time window
+      const editWindowMs = 15 * 60 * 1000;
+      if (Date.now() - msg.createdAt > editWindowMs) {
+        showToast('⚠️ Edit window expired (15m limit)');
+        setEditingMessageId(null);
+        setEditingMessageText('');
+        setInputText('');
+        return;
+      }
+
+      try {
+        await updateFirestoreMessage(chat.id, msg.id, textToSave);
+        const recipientId = chat.participant?.id || chat.participantIds?.find(id => id !== currentUser.id);
+        if (recipientId) {
+          peerService.sendP2PMessageEdit(recipientId, chat.id, msg.id, textToSave, Date.now());
+        }
+        playGlassChimeSound('sent');
+        showToast('✓ Message edited');
+      } catch (err) {
+        console.error('Error updating message:', err);
+        showToast('Failed to save edit');
+      }
     }
     setEditingMessageId(null);
     setEditingMessageText('');
+    setInputText('');
   };
 
   // Disappearing Media Pop-up notice state
@@ -189,6 +213,15 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
 
   const handleSendText = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
+    if (editingMessageId) {
+      const msg = messages.find(m => m.id === editingMessageId);
+      if (msg) {
+        await handleSaveEdit(msg);
+        return;
+      }
+    }
+
     const clean = inputText.trim();
     if (!clean) return;
 
@@ -806,6 +839,48 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           isBarsVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : 'translate-y-24 opacity-0 pointer-events-none'
         }`}
       >
+        {/* Editing Message Banner */}
+        {editingMessageId && (() => {
+          const editingMsg = messages.find(m => m.id === editingMessageId);
+          if (!editingMsg) return null;
+          const editWindowMs = 15 * 60 * 1000;
+          const remainingMs = Math.max(0, editWindowMs - (Date.now() - editingMsg.createdAt));
+          const minsLeft = Math.ceil(remainingMs / 60000);
+
+          return (
+            <div className="mb-2 p-2.5 px-3 rounded-2xl bg-[#111b21]/95 border border-purple-500/40 shadow-2xl backdrop-blur-2xl flex items-center justify-between text-xs animate-in slide-in-from-bottom duration-150 z-50">
+              <div className="flex items-center gap-2.5 text-slate-200 min-w-0 pr-2 flex-1 select-none">
+                <div className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-sm shrink-0">
+                  ✏️
+                </div>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-purple-400 text-[11px]">Editing Message</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 text-[9px] font-semibold">
+                      {minsLeft > 0 ? `${minsLeft}m window remaining` : 'Ending soon'}
+                    </span>
+                  </div>
+                  <span className="truncate text-slate-300 text-xs mt-0.5 opacity-90">
+                    "{editingMsg.content}"
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMessageId(null);
+                  setEditingMessageText('');
+                  setInputText('');
+                }}
+                className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white shrink-0 transition-all active:scale-90 cursor-pointer"
+                title="Cancel Editing"
+              >
+                ❌
+              </button>
+            </div>
+          );
+        })()}
+
         {/* Reply Context Banner - Attached on top of input bar with Media Identification */}
         {replyingTo && (
           <div className="mb-2 p-2.5 px-3 rounded-2xl bg-[#111b21]/95 border border-white/20 shadow-2xl backdrop-blur-2xl flex items-center justify-between text-xs animate-in slide-in-from-bottom duration-150 z-50">
@@ -1331,6 +1406,175 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           onOpenLightbox={onOpenLightbox}
         />
       )}
+
+      {/* Tap-Hold / Long-Press Message Action Sheet Modal */}
+      {activeReactionMessageId && (() => {
+        const activeMsg = messages.find(m => m.id === activeReactionMessageId);
+        if (!activeMsg) return null;
+
+        const isUserMsg = activeMsg.senderId === currentUser.id;
+        const isTextMsg = activeMsg.type === 'text';
+        const editWindowMs = 15 * 60 * 1000;
+        const timeElapsed = Date.now() - activeMsg.createdAt;
+        const isWithinEditWindow = timeElapsed <= editWindowMs;
+        const minsLeft = Math.max(1, Math.ceil((editWindowMs - timeElapsed) / 60000));
+        const canEdit = isUserMsg && isTextMsg && isWithinEditWindow;
+
+        return (
+          <div
+            className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-fade-in select-none"
+            onClick={() => setActiveReactionMessageId(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md p-4 rounded-3xl mirror-glass-card border border-white/20 shadow-2xl space-y-3 animate-in slide-in-from-bottom sm:zoom-in-95 duration-150"
+            >
+              {/* Quick Reaction Emojis Floating Bar */}
+              <div className="flex items-center justify-between gap-1 p-2 rounded-2xl bg-black/40 border border-white/10 overflow-x-auto no-scrollbar shadow-inner">
+                {['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉'].map((emoji) => {
+                  const userReacted = activeMsg.reactions?.[emoji]?.includes(currentUser.id);
+                  return (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        if (onToggleReaction) onToggleReaction(activeMsg.id, emoji);
+                        setActiveReactionMessageId(null);
+                        playGlassChimeSound('sent');
+                      }}
+                      className={`p-2 rounded-xl text-xl transition-transform active:scale-125 hover:scale-110 ${
+                        userReacted ? 'bg-purple-600/40 border border-purple-400' : 'hover:bg-white/10'
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Selected Message Summary Card */}
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 max-h-24 overflow-y-auto custom-scrollbar">
+                <div className="text-[10px] text-slate-400 font-bold mb-0.5 flex items-center justify-between">
+                  <span>{activeMsg.senderName}</span>
+                  <span>{activeMsg.timestamp}</span>
+                </div>
+                <p className="text-xs text-slate-200 line-clamp-3 leading-relaxed">
+                  {activeMsg.content || (activeMsg.type === 'image' ? '📷 Photo' : activeMsg.type === 'voice' ? '🎤 Voice Note' : '📎 Attachment')}
+                </p>
+              </div>
+
+              {/* Action Menu Items */}
+              <div className="space-y-1.5 pt-1">
+                {/* 1. Edit Sent Message (Requested feature) */}
+                {isUserMsg && isTextMsg && (
+                  <button
+                    onClick={() => {
+                      if (canEdit) {
+                        setEditingMessageId(activeMsg.id);
+                        setEditingMessageText(activeMsg.content);
+                        setInputText(activeMsg.content);
+                        setActiveReactionMessageId(null);
+                        setTimeout(() => {
+                          const input = document.getElementById('chat-message-input');
+                          if (input) input.focus();
+                        }, 100);
+                      } else {
+                        showToast('Edit window has expired (15 mins limit)');
+                      }
+                    }}
+                    disabled={!canEdit}
+                    className={`w-full p-3 rounded-2xl flex items-center justify-between text-xs font-bold transition-all ${
+                      canEdit
+                        ? 'bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 active:scale-98'
+                        : 'bg-white/5 opacity-50 cursor-not-allowed border border-white/5 text-slate-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">✏️</span>
+                      <span>Edit Sent Message</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/40 border border-white/10">
+                      {canEdit ? `${minsLeft}m window left` : 'Expired (>15m)'}
+                    </span>
+                  </button>
+                )}
+
+                {/* 2. Reply */}
+                <button
+                  onClick={() => {
+                    setReplyingTo(activeMsg);
+                    setActiveReactionMessageId(null);
+                    const input = document.getElementById('chat-message-input');
+                    if (input) input.focus();
+                  }}
+                  className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 flex items-center gap-2.5 text-xs font-bold transition-all active:scale-98"
+                >
+                  <span className="text-base">↩️</span>
+                  <span>Reply</span>
+                </button>
+
+                {/* 3. Copy Text */}
+                {activeMsg.content && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(activeMsg.content);
+                      showToast('✓ Message copied to clipboard');
+                      setActiveReactionMessageId(null);
+                    }}
+                    className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 flex items-center gap-2.5 text-xs font-bold transition-all active:scale-98"
+                  >
+                    <span className="text-base">📋</span>
+                    <span>Copy Text</span>
+                  </button>
+                )}
+
+                {/* 4. Pin / Unpin */}
+                <button
+                  onClick={() => {
+                    if (onTogglePin) onTogglePin(activeMsg);
+                    setActiveReactionMessageId(null);
+                  }}
+                  className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 flex items-center gap-2.5 text-xs font-bold transition-all active:scale-98"
+                >
+                  <span className="text-base">📌</span>
+                  <span>Pin / Unpin Message</span>
+                </button>
+
+                {/* 5. Forward */}
+                <button
+                  onClick={() => {
+                    if (onOpenForward) onOpenForward(activeMsg);
+                    setActiveReactionMessageId(null);
+                  }}
+                  className="w-full p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 flex items-center gap-2.5 text-xs font-bold transition-all active:scale-98"
+                >
+                  <span className="text-base">↗️</span>
+                  <span>Forward Message</span>
+                </button>
+
+                {/* 6. Delete */}
+                <button
+                  onClick={() => {
+                    setMessageToDelete(activeMsg.id);
+                    setActiveReactionMessageId(null);
+                  }}
+                  className="w-full p-3 rounded-2xl bg-blue-500/15 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 flex items-center gap-2.5 text-xs font-bold transition-all active:scale-98"
+                >
+                  <span className="text-base">🗑️</span>
+                  <span>Delete Message</span>
+                </button>
+              </div>
+
+              {/* Cancel Button */}
+              <button
+                onClick={() => setActiveReactionMessageId(null)}
+                className="w-full py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-slate-300 font-bold text-xs transition-all mt-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {messageToDelete && (

@@ -6,6 +6,7 @@ import {
   persistentMultipleTabManager,
   memoryLocalCache,
   getDocFromServer,
+  setLogLevel,
   collection, 
   doc, 
   setDoc, 
@@ -21,6 +22,10 @@ import {
   serverTimestamp,
   Firestore
 } from 'firebase/firestore';
+
+// Set Firestore log level to error to suppress non-fatal connectivity warnings
+setLogLevel('error');
+
 import { getAuth } from 'firebase/auth';
 import { getStorage, ref, deleteObject, getDownloadURL, uploadBytes } from 'firebase/storage';
 import firebaseConfigJson from '../../firebase-applet-config.json';
@@ -37,13 +42,13 @@ const firebaseConfig = {
 // Initialize Firebase App singleton
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firestore with auto-detect long polling & adaptive local cache for sandbox & web environments
+// Initialize Firestore with forced HTTP long polling & adaptive local cache for instant sandbox connectivity
 let firestoreInstance: Firestore;
 const dbId = (firebaseConfigJson as { firestoreDatabaseId?: string }).firestoreDatabaseId;
 
 try {
   const options = {
-    experimentalAutoDetectLongPolling: true,
+    experimentalForceLongPolling: true,
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
   };
   firestoreInstance = dbId 
@@ -53,7 +58,7 @@ try {
   try {
     // Fallback to memory local cache if persistent IndexedDB cache is locked or unsupported
     const fallbackOptions = {
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
       localCache: memoryLocalCache()
     };
     firestoreInstance = dbId

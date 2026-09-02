@@ -20,6 +20,7 @@ import {
 import { User, Chat, Message, CallLog, PushNotification, CallSession, UserStatus, BroadcastFeed, BroadcastFeedPost, CallSignal } from '../types';
 import { 
   saveMessageToIndexedDB, 
+  updateMessageInIndexedDB,
   getMessagesFromIndexedDB, 
   deleteMessageFromIndexedDB, 
   clearChatMessagesFromIndexedDB,
@@ -301,7 +302,13 @@ export function subscribeToUsers(callback: (users: User[]) => void): () => void 
   return onSnapshot(usersRef, (snapshot) => {
     const users: User[] = [];
     snapshot.forEach(docSnap => {
-      users.push(docSnap.data() as User);
+      const data = docSnap.data() as User;
+      const presence = calculateUserPresence(data);
+      users.push({
+        ...data,
+        status: presence.status,
+        lastSeen: presence.lastSeen
+      });
     });
     callback(users);
   }, (err) => {
@@ -352,20 +359,31 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
   const usersRef = collection(db, 'users');
   const cleanPhone = normalizePhoneNumber(userPhone);
 
+  // 1. Initial render from IndexedDB for instant UI loading
+  getChatsFromIndexedDB().then((cachedChats) => {
+    if (cachedChats && cachedChats.length > 0) {
+      callback(cachedChats);
+    }
+  }).catch(() => {});
+
   let latestChatsSnap: any = null;
   let latestUsersMap: Record<string, any> = {};
+  const activeMessageUnsubs: Record<string, () => void> = {};
 
   const processAndEmitChats = () => {
     if (!latestChatsSnap) return;
 
     const chats: Chat[] = [];
+    const activeChatIds = new Set<string>();
+
     latestChatsSnap.forEach((docSnap: any) => {
       const data = docSnap.data();
       const pIds: string[] = data.participantIds || [];
       const pPhones = (data.participantPhones || []).map((p: string) => normalizePhoneNumber(p));
 
       // Include if current user is participant
-      if (pIds.includes(userId) || (cleanPhone && pPhones.includes(cleanPhone))) {
+      if (pIds.includes(userId) || (cleanPhone && pPhones.includes(cleanPhone)) || data.participantsMap?.[userId] || data.creatorId === userId) {
+        activeChatIds.add(docSnap.id);
         const userDraft = data.drafts?.[userId]?.text || getCachedChatDraft(docSnap.id, userId) || undefined;
 
         const otherId = pIds.find((id: string) => id !== userId);
@@ -411,7 +429,7 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
           lastSeen: presence.lastSeen
         };
 
-        chats.push({
+        const chatObj: Chat = {
           id: docSnap.id,
           name: displayChatName,
           username: peerUsername,
@@ -441,7 +459,70 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
             isRead: data.lastMessageIsRead !== false,
             type: data.lastMessageType || 'text'
           }
-        });
+        };
+
+        chats.push(chatObj);
+        saveChatToIndexedDB(chatObj).catch(() => {});
+
+        // Maintain background delivery queue listener for this chat
+        if (!activeMessageUnsubs[docSnap.id]) {
+          const msgsRef = collection(db, 'chats', docSnap.id, 'messages');
+          activeMessageUnsubs[docSnap.id] = onSnapshot(msgsRef, async (msgSnap) => {
+            if (msgSnap.empty) return;
+            for (const msgDoc of msgSnap.docs) {
+              const d = msgDoc.data();
+              // ONLY process if sent by recipient (d.senderId !== userId)
+              if (d.senderId && d.senderId !== userId) {
+                let finalMediaUrl = d.mediaUrl;
+                if (d.mediaUrl && (d.mediaUrl.includes('firebasestorage.googleapis.com') || d.mediaUrl.includes('temp_media'))) {
+                  try {
+                    const res = await fetch(d.mediaUrl);
+                    const blob = await res.blob();
+                    finalMediaUrl = await saveMediaBlobToIndexedDB(msgDoc.id, blob, d.mediaMeta?.mimeType);
+                    const fileRef = ref(storage, d.mediaUrl);
+                    deleteObject(fileRef).catch(() => {});
+                  } catch (e) {}
+                }
+
+                const msgObj: Message = {
+                  id: msgDoc.id,
+                  chatId: docSnap.id,
+                  senderId: d.senderId,
+                  senderName: d.senderName || 'User',
+                  senderAvatar: d.senderAvatar || '👤',
+                  content: d.content || d.text || '',
+                  timestamp: d.timestamp || '',
+                  createdAt: d.createdAt || Date.now(),
+                  expiresAt: d.expiresAt,
+                  isExpired: false,
+                  status: 'delivered',
+                  type: d.type || 'text',
+                  mediaUrl: finalMediaUrl,
+                  mediaMeta: d.mediaMeta,
+                  replyTo: d.replyTo,
+                  reactions: d.reactions || {}
+                };
+
+                await saveMessageToIndexedDB(msgObj);
+                deleteDoc(doc(db, 'chats', docSnap.id, 'messages', msgDoc.id)).catch(() => {});
+
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('splendid-incoming-message', {
+                    detail: { chatId: docSnap.id, message: msgObj }
+                  }));
+                }
+              }
+            }
+          }, () => {});
+        }
+      }
+    });
+
+    // Cleanup unsubscriptions for deleted chats
+    Object.keys(activeMessageUnsubs).forEach(cId => {
+      if (!activeChatIds.has(cId)) {
+        activeMessageUnsubs[cId]();
+        delete activeMessageUnsubs[cId];
       }
     });
 
@@ -485,6 +566,7 @@ export function subscribeToUserChats(userId: string, userPhone: string, callback
     unsubUsers();
     unsubChats();
     clearInterval(timer);
+    Object.values(activeMessageUnsubs).forEach(unsub => unsub());
   };
 }
 
@@ -617,6 +699,7 @@ export function isExpiringMediaOrStickerOrEmoji(data: any): boolean {
 
 export function subscribeToChatMessages(
   chatId: string,
+  currentUserId: string,
   callback: (messages: Message[]) => void
 ): () => void {
   // 1. Initial render from IndexedDB for zero latency & offline persistence
@@ -633,8 +716,17 @@ export function subscribeToChatMessages(
     }
   };
 
+  const handleIncomingInternalMessage = async (e: Event) => {
+    const customEvent = e as CustomEvent;
+    if (customEvent.detail?.chatId === chatId) {
+      const refreshedMsgs = await getMessagesFromIndexedDB(chatId);
+      callback(refreshedMsgs);
+    }
+  };
+
   if (typeof window !== 'undefined') {
     window.addEventListener('splendid-p2p-message-received', handleP2PMessage);
+    window.addEventListener('splendid-incoming-message', handleIncomingInternalMessage);
   }
 
   // 3. Listen to Firebase temporary inbox delivery queue
@@ -658,66 +750,68 @@ export function subscribeToChatMessages(
       const isExpiring = d.expiresAt || isExpiringMediaOrStickerOrEmoji(d);
       const expiresAt = d.expiresAt || (isExpiring ? createdAt + MEDIA_EXPIRATION_MS : undefined);
 
-      let finalMediaUrl = d.mediaUrl;
+      const isOutbound = d.senderId === currentUserId;
 
-      // If mediaUrl is stored in temporary Firebase Storage (because receiver was offline when sent)
-      if (d.mediaUrl && (d.mediaUrl.includes('firebasestorage.googleapis.com') || d.mediaUrl.includes('temp_media'))) {
-        try {
-          // 1. Fetch the temporary media blob from Firebase Storage
-          const res = await fetch(d.mediaUrl);
-          const blob = await res.blob();
+      if (!isOutbound) {
+        let finalMediaUrl = d.mediaUrl;
 
-          // 2. Persist permanently into receiver's device IndexedDB
-          finalMediaUrl = await saveMediaBlobToIndexedDB(docSnap.id, blob, d.mediaMeta?.mimeType);
+        // If mediaUrl is stored in temporary Firebase Storage (because receiver was offline when sent)
+        if (d.mediaUrl && (d.mediaUrl.includes('firebasestorage.googleapis.com') || d.mediaUrl.includes('temp_media'))) {
+          try {
+            // Fetch the temporary media blob from Firebase Storage
+            const res = await fetch(d.mediaUrl);
+            const blob = await res.blob();
 
-          // 3. IMMEDIATELY delete temporary media file from Firebase Storage
-          const fileRef = ref(storage, d.mediaUrl);
-          deleteObject(fileRef).catch((e) => console.debug('Firebase Storage cleanup notice:', e));
-        } catch (err) {
-          console.warn('Error downloading temporary offline media from Firebase Storage:', err);
+            // Persist permanently into receiver's device IndexedDB
+            finalMediaUrl = await saveMediaBlobToIndexedDB(docSnap.id, blob, d.mediaMeta?.mimeType);
+
+            // IMMEDIATELY delete temporary media file from Firebase Storage
+            const fileRef = ref(storage, d.mediaUrl);
+            deleteObject(fileRef).catch((e) => console.debug('Firebase Storage cleanup notice:', e));
+          } catch (err) {
+            console.warn('Error downloading temporary offline media from Firebase Storage:', err);
+          }
         }
+
+        const msgObj: Message = {
+          id: docSnap.id,
+          chatId: d.chatId || chatId,
+          senderId: d.senderId,
+          senderName: d.senderName,
+          senderAvatar: d.senderAvatar,
+          content: d.content || d.text || '',
+          timestamp: d.timestamp || '',
+          createdAt,
+          expiresAt,
+          isExpired: false,
+          isForwarded: d.isForwarded || false,
+          forwardedFrom: d.forwardedFrom,
+          status: 'delivered',
+          type: d.type || 'text',
+          mediaUrl: finalMediaUrl,
+          mediaMeta: d.mediaMeta || {
+            fileName: d.mediaName,
+            fileSize: d.mediaSize,
+            duration: d.audioDuration,
+            waveData: d.audioWaveform
+          },
+          replyTo: d.replyTo,
+          reactions: d.reactions || {}
+        };
+
+        // Permanently store received message in local IndexedDB
+        await saveMessageToIndexedDB(msgObj);
+        hasNewDeliveredDocs = true;
+
+        // ONLY RECIPIENT DELETES FROM FIRESTORE QUEUE
+        deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id)).catch((err) => {
+          console.debug('Ephemeral queue deletion notice:', err);
+        });
       }
-
-      const msgObj: Message = {
-        id: docSnap.id,
-        chatId: d.chatId || chatId,
-        senderId: d.senderId,
-        senderName: d.senderName,
-        senderAvatar: d.senderAvatar,
-        content: d.content || d.text || '',
-        timestamp: d.timestamp || '',
-        createdAt,
-        expiresAt,
-        isExpired: false,
-        isForwarded: d.isForwarded || false,
-        forwardedFrom: d.forwardedFrom,
-        status: 'delivered',
-        type: d.type || 'text',
-        mediaUrl: finalMediaUrl,
-        mediaMeta: d.mediaMeta || {
-          fileName: d.mediaName,
-          fileSize: d.mediaSize,
-          duration: d.audioDuration,
-          waveData: d.audioWaveform
-        },
-        replyTo: d.replyTo,
-        reactions: d.reactions || {}
-      };
-
-      // Permanently store received message in local IndexedDB
-      await saveMessageToIndexedDB(msgObj);
-      hasNewDeliveredDocs = true;
-
-      // IMMEDIATELY delete received message document from Firebase Firestore queue
-      deleteDoc(doc(db, 'chats', chatId, 'messages', docSnap.id)).catch((err) => {
-        console.debug('Ephemeral queue deletion notice:', err);
-      });
     }
 
-    if (hasNewDeliveredDocs) {
-      const updatedMsgs = await getMessagesFromIndexedDB(chatId);
-      callback(updatedMsgs);
-    }
+    const updatedMsgs = await getMessagesFromIndexedDB(chatId);
+    callback(updatedMsgs);
   }, (err) => {
     console.warn('Temporary queue subscription notice:', err);
   });
@@ -726,6 +820,7 @@ export function subscribeToChatMessages(
     unsubscribeFirestore();
     if (typeof window !== 'undefined') {
       window.removeEventListener('splendid-p2p-message-received', handleP2PMessage);
+      window.removeEventListener('splendid-incoming-message', handleIncomingInternalMessage);
     }
   };
 }
@@ -1172,8 +1267,44 @@ export async function toggleMessageReaction(
 }
 
 export async function updateFirestoreMessage(chatId: string, messageId: string, newContent: string): Promise<void> {
-  const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
-  await updateDoc(msgRef, { content: newContent });
+  const now = Date.now();
+  // 1. Update in local IndexedDB
+  const updatedMsg = await updateMessageInIndexedDB(messageId, {
+    content: newContent,
+    isEdited: true,
+    editedAt: now
+  });
+
+  // 2. Update in Firestore if present in queue
+  try {
+    const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
+    await updateDoc(msgRef, {
+      content: newContent,
+      isEdited: true,
+      editedAt: now
+    }).catch(() => {});
+  } catch (e) {
+    console.debug('Firestore message update notice:', e);
+  }
+
+  // 3. Update chat lastMessageText in Firestore & local state
+  try {
+    const chatRef = doc(db, 'chats', chatId);
+    const chatSnap = await getDoc(chatRef);
+    if (chatSnap.exists()) {
+      await updateDoc(chatRef, {
+        lastMessageText: newContent,
+        updatedAt: now
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
+  // 4. Notify UI via event
+  if (typeof window !== 'undefined' && updatedMsg) {
+    window.dispatchEvent(new CustomEvent('splendid-incoming-message', {
+      detail: { chatId, message: updatedMsg }
+    }));
+  }
 }
 
 export async function deleteFirestoreMessage(chatId: string, messageId: string): Promise<void> {

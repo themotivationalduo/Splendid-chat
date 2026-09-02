@@ -24,7 +24,7 @@ import { UpdatesTabView } from './components/UpdatesTabView';
 import { StatusViewer } from './components/StatusViewer';
 import { SuccessAnimationModal, SuccessAnimationType } from './components/SuccessAnimationModal';
 
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion, useMotionValue, useTransform } from 'motion/react';
 
 import { Chat, Message, User, PushNotification, TabType, FilterType, CallLog, WALLPAPER_OPTIONS, APP_COLOR_OPTIONS, CallSession, UserStatus, getThemeStyles } from './types';
 import {
@@ -50,6 +50,7 @@ import {
   registerFirebaseUser,
   forwardFirestoreMessage,
   subscribeToUsers,
+  deleteContactUser,
   updateUserPresence,
   togglePinMessage,
   updateChatPinOrder,
@@ -65,6 +66,206 @@ import {
 import { playGlassChimeSound, RecordingResult } from './services/audioService';
 import { requestPushPermission, triggerPushNotification } from './services/notificationService';
 import { peerService } from './services/peerService';
+
+interface SwipeableContactCardProps {
+  user: User;
+  isSelf: boolean;
+  displayUsername: string;
+  isPinned: boolean;
+  hasStatus: boolean;
+  userStatuses: UserStatus[];
+  onOpenProfile: (user: User) => void;
+  onStartChat: (user: User) => void;
+  onOpenStatusViewer: (userId: string, statuses: UserStatus[]) => void;
+  onDeleteContact: (user: User) => void;
+  onTogglePinContact: (user: User) => void;
+}
+
+const SwipeableContactCard: React.FC<SwipeableContactCardProps> = ({
+  user,
+  isSelf,
+  displayUsername,
+  isPinned,
+  hasStatus,
+  userStatuses,
+  onOpenProfile,
+  onStartChat,
+  onOpenStatusViewer,
+  onDeleteContact,
+  onTogglePinContact
+}) => {
+  const x = useMotionValue(0);
+  const isDraggingRef = useRef(false);
+  const dragDistRef = useRef(0);
+
+  const deleteOpacity = useTransform(x, [10, 45, 80], [0, 0.6, 1]);
+  const deleteScale = useTransform(x, [10, 45, 80], [0.8, 0.95, 1.05]);
+
+  const pinOpacity = useTransform(x, [-10, -45, -80], [0, 0.6, 1]);
+  const pinScale = useTransform(x, [-10, -45, -80], [0.8, 0.95, 1.05]);
+
+  const handleDragEnd = (_: any, info: { offset: { x: number; y: number }; velocity: { x: number; y: number } }) => {
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 150);
+
+    const offsetX = info.offset.x;
+    const velocityX = info.velocity.x;
+
+    if (!isSelf && (offsetX > 65 || velocityX > 250)) {
+      if (navigator.vibrate) navigator.vibrate(40);
+      onDeleteContact(user);
+    } else if (!isSelf && (offsetX < -65 || velocityX < -250)) {
+      if (navigator.vibrate) navigator.vibrate(40);
+      onTogglePinContact(user);
+    }
+  };
+
+  const handleClick = () => {
+    if (isDraggingRef.current || Math.abs(dragDistRef.current) > 6) return;
+    onOpenProfile(user);
+  };
+
+  return (
+    <div className="relative w-full overflow-hidden rounded-xl select-none touch-pan-y">
+      {/* Left underlay: Delete */}
+      {!isSelf && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            if (navigator.vibrate) navigator.vibrate(40);
+            onDeleteContact(user);
+          }}
+          className="absolute inset-0 z-0 flex items-center justify-start pl-4 bg-gradient-to-r from-rose-600/35 via-rose-500/15 to-transparent border border-rose-500/30 text-rose-300 rounded-xl cursor-pointer"
+        >
+          <motion.div
+            style={{ opacity: deleteOpacity, scale: deleteScale }}
+            className="flex items-center gap-1.5 font-bold text-xs text-rose-200"
+          >
+            <span className="w-7 h-7 rounded-full bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-xs">
+              🗑️
+            </span>
+            <span>Delete</span>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Right underlay: Pin / Unpin */}
+      {!isSelf && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            if (navigator.vibrate) navigator.vibrate(40);
+            onTogglePinContact(user);
+          }}
+          className={`absolute inset-0 z-0 flex items-center justify-end pr-4 bg-gradient-to-l to-transparent border rounded-xl cursor-pointer ${
+            isPinned
+              ? 'from-amber-600/35 via-amber-500/15 border-amber-500/30 text-amber-300'
+              : 'from-indigo-600/35 via-indigo-500/15 border-indigo-500/30 text-indigo-300'
+          }`}
+        >
+          <motion.div
+            style={{ opacity: pinOpacity, scale: pinScale }}
+            className="flex items-center gap-1.5 font-bold text-xs text-slate-100"
+          >
+            <span>{isPinned ? 'Unpin' : 'Pin'}</span>
+            <span
+              className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs ${
+                isPinned
+                  ? 'bg-amber-500/20 border-amber-500/30 text-amber-300'
+                  : 'bg-indigo-500/20 border-indigo-500/30 text-indigo-300'
+              }`}
+            >
+              📌
+            </span>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Foreground card */}
+      <motion.div
+        drag={isSelf ? false : 'x'}
+        dragDirectionLock
+        dragConstraints={{ left: -100, right: 100 }}
+        dragElastic={0.2}
+        style={{ x }}
+        onDragStart={() => {
+          isDraggingRef.current = true;
+          dragDistRef.current = 0;
+        }}
+        onDrag={(_, info) => {
+          dragDistRef.current = info.offset.x;
+        }}
+        onDragEnd={handleDragEnd}
+        onClick={handleClick}
+        className={`relative z-10 p-2.5 rounded-xl mirror-glass-card border flex items-center justify-between gap-2.5 cursor-pointer transition-all select-none ${
+          isSelf ? 'border-blue-500/30 bg-blue-950/20' : 'border-white/10 hover:border-white/20'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            onClick={(e) => {
+              if (hasStatus) {
+                e.stopPropagation();
+                onOpenStatusViewer(user.id, userStatuses);
+              }
+            }}
+            className={`relative w-9 h-9 rounded-xl mirror-glass-input border flex items-center justify-center font-bold text-base text-white shrink-0 shadow-sm ${
+              hasStatus
+                ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-[#121418] border-blue-500/30 cursor-pointer'
+                : 'border-white/10'
+            }`}
+            title={hasStatus ? 'Click to view Status update' : 'Contact avatar'}
+          >
+            {user.avatar || '👤'}
+            <span
+              className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#121418] ${
+                user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
+              }`}
+            />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h4 className="text-xs font-bold text-slate-100 truncate">
+                {displayUsername}
+              </h4>
+              {isPinned && (
+                <span title="Pinned Contact" className="text-[10px]">📌</span>
+              )}
+              {isSelf && (
+                <span className="px-1 py-0.2 rounded bg-blue-500/20 text-blue-400 text-[8px] font-bold">
+                  You
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 font-mono truncate">
+              {user.fullName} • 📱 {user.phoneNumber}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => onOpenProfile(user)}
+            className="w-6.5 h-6.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center text-xs"
+            title="View Contact Info"
+          >
+            ℹ️
+          </button>
+          {!isSelf && (
+            <button
+              onClick={() => onStartChat(user)}
+              className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 text-[11px] font-bold transition-all flex items-center gap-1"
+            >
+              <span>💬</span>
+              <span>Chat</span>
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 export default function App() {
   // Application State
@@ -488,7 +689,7 @@ export default function App() {
     // Mark unread messages from other user as read in real time
     markChatMessagesAsRead(selectedChat.id, currentUser.id);
 
-    const unsubscribe = subscribeToChatMessages(selectedChat.id, (messages) => {
+    const unsubscribe = subscribeToChatMessages(selectedChat.id, currentUser.id, (messages) => {
       setActiveChatMessages(messages);
       markChatMessagesAsRead(selectedChat.id, currentUser.id);
     });
@@ -775,6 +976,38 @@ export default function App() {
 
       await updateChatPinOrder(currChat.id, true, newCurrOrder);
       await updateChatPinOrder(nextChat.id, true, newNextOrder);
+    }
+  };
+
+  const handleTogglePinContact = async (user: User) => {
+    const existingChat = chats.find(c => c.participant?.id === user.id || c.id === user.id || c.participant?.phoneNumber === user.phoneNumber);
+    if (existingChat) {
+      await handleTogglePin(existingChat.id);
+      handleShowSuccessModal('generic', existingChat.isPinned ? 'Contact Unpinned' : 'Contact Pinned to Top', `@${(user.username || user.fullName).replace(/^@/, '')}`);
+    } else if (currentUser) {
+      const chat = await createOrGetFirestoreChat(currentUser, user);
+      setChats(prev => [chat, ...prev.filter(c => c.id !== chat.id)]);
+      await handleTogglePin(chat.id);
+      handleShowSuccessModal('generic', 'Contact Pinned to Top', `@${(user.username || user.fullName).replace(/^@/, '')}`);
+    }
+  };
+
+  const [contactToDelete, setContactToDelete] = useState<User | null>(null);
+  const [isDeletingContact, setIsDeletingContact] = useState(false);
+
+  const handleConfirmDeleteContact = async () => {
+    if (!contactToDelete || !currentUser || isDeletingContact) return;
+    setIsDeletingContact(true);
+    try {
+      await deleteContactUser(contactToDelete.id, currentUser.id);
+      const deletedName = (contactToDelete.username || contactToDelete.fullName).replace(/^@/, '');
+      setChats(prev => prev.filter(c => c.participant?.id !== contactToDelete.id && c.id !== contactToDelete.id));
+      setContactToDelete(null);
+      handleShowSuccessModal('delete', 'Contact Deleted!', `@${deletedName} has been removed from contacts.`);
+    } catch (err) {
+      console.error('Error deleting contact:', err);
+    } finally {
+      setIsDeletingContact(false);
     }
   };
 
@@ -1247,6 +1480,11 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1 text-[10px] text-slate-500 font-medium">
+                    <span className="text-rose-400/80">👉 Slide right: Delete</span>
+                    <span className="text-indigo-400/80">Slide left: Pin / Unpin 👈</span>
+                  </div>
+
                   {allUsers
                     .filter(u => {
                       if (!searchQuery.trim()) return true;
@@ -1260,80 +1498,26 @@ export default function App() {
                     .map((user) => {
                       const isSelf = currentUser ? user.id === currentUser.id : false;
                       const displayUsername = `@${(user.username || user.fullName).replace(/^@/, '')}`;
+                      const userStatuses = activeStatuses.filter(s => s.userId === user.id);
+                      const hasStatus = userStatuses.length > 0;
+                      const existingChat = chats.find(c => c.participant?.id === user.id || c.id === user.id || c.participant?.phoneNumber === user.phoneNumber);
+                      const isPinned = existingChat?.isPinned || false;
 
                       return (
-                        <div
+                        <SwipeableContactCard
                           key={user.id}
-                          onClick={() => handleOpenUserProfile(user)}
-                          className={`p-2.5 rounded-xl mirror-glass-card border flex items-center justify-between gap-2.5 cursor-pointer transition-all select-none ${
-                            isSelf ? 'border-blue-500/30 bg-blue-950/20' : 'border-white/10 hover:border-white/20'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {(() => {
-                              const userStatuses = activeStatuses.filter(s => s.userId === user.id);
-                              const hasStatus = userStatuses.length > 0;
-
-                              return (
-                                <div 
-                                  onClick={(e) => {
-                                    if (hasStatus) {
-                                      e.stopPropagation();
-                                      setActiveStatusViewer({ userId: user.id, statuses: userStatuses });
-                                    }
-                                  }}
-                                  className={`relative w-9 h-9 rounded-xl mirror-glass-input border flex items-center justify-center font-bold text-base text-white shrink-0 shadow-sm ${
-                                    hasStatus 
-                                      ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-[#121418] border-blue-500/30' 
-                                      : 'border-white/10'
-                                  }`}
-                                  title={hasStatus ? "Click to view Status update" : "Contact avatar"}
-                                >
-                                  {user.avatar || '👤'}
-                                  <span
-                                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#121418] ${
-                                      user.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'
-                                    }`}
-                                  />
-                                </div>
-                              );
-                            })()}
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <h4 className="text-xs font-bold text-slate-100 truncate">
-                                  {displayUsername}
-                                </h4>
-                                {isSelf && (
-                                  <span className="px-1 py-0.2 rounded bg-blue-500/20 text-blue-400 text-[8px] font-bold">
-                                    You
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-slate-400 font-mono truncate">
-                                {user.fullName} • 📱 {user.phoneNumber}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => handleOpenUserProfile(user)}
-                              className="w-6.5 h-6.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center text-xs"
-                              title="View Contact Info"
-                            >
-                              ℹ️
-                            </button>
-                            {!isSelf && (
-                              <button
-                                onClick={() => handleStartChatWithUser(user)}
-                                className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 text-[11px] font-bold transition-all flex items-center gap-1"
-                              >
-                                <span>💬</span>
-                                <span>Chat</span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                          user={user}
+                          isSelf={isSelf}
+                          displayUsername={displayUsername}
+                          isPinned={isPinned}
+                          hasStatus={hasStatus}
+                          userStatuses={userStatuses}
+                          onOpenProfile={handleOpenUserProfile}
+                          onStartChat={handleStartChatWithUser}
+                          onOpenStatusViewer={(uId, stList) => setActiveStatusViewer({ userId: uId, statuses: stList })}
+                          onDeleteContact={(u) => setContactToDelete(u)}
+                          onTogglePinContact={handleTogglePinContact}
+                        />
                       );
                     })}
                 </div>
@@ -1853,6 +2037,63 @@ export default function App() {
           onClose={() => setActiveStatusViewer(null)}
           onReshareStatus={handleReshareStatus}
         />
+      )}
+
+      {/* Contact Deletion Confirmation Modal */}
+      {contactToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-100">
+          <div className="w-full max-w-sm rounded-3xl mirror-glass-card border border-rose-500/30 p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-2xl">
+                🗑️
+              </div>
+              <div>
+                <h3 className="font-extrabold text-white text-base">Delete Contact?</h3>
+                <p className="text-xs text-rose-300/80">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">{contactToDelete.avatar || '👤'}</span>
+                <div>
+                  <h4 className="text-xs font-bold text-white">@{contactToDelete.username || contactToDelete.fullName}</h4>
+                  <p className="text-[11px] text-slate-400 font-mono">{contactToDelete.fullName} • {contactToDelete.phoneNumber}</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to remove <strong className="text-white">@{contactToDelete.username || contactToDelete.fullName}</strong> from your contacts?
+            </p>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingContact}
+                onClick={() => setContactToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 font-bold text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingContact}
+                onClick={handleConfirmDeleteContact}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition-colors flex items-center justify-center gap-1.5"
+              >
+                {isDeletingContact ? (
+                  <span className="animate-spin text-sm">⏳</span>
+                ) : (
+                  <>
+                    <span>🗑️</span>
+                    <span>Delete</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Confirmation & Action Success Animation Modal */}

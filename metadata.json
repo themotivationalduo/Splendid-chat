@@ -1,6 +1,6 @@
 {
   "name": "SPLENDID CHAT",
-  "description": "Splendid Chat end-to-end encrypted messaging app with 24h disappearing messages and voice/video call support.",
-  "requestFramePermissions": ["microphone"],
+  "description": "Splendid Chat end-to-end encrypted messaging app with 24h disappearing messages, message editing, and PeerJS voice/video call support.",
+  "requestFramePermissions": ["microphone", "camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

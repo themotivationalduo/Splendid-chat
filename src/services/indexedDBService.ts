@@ -113,6 +113,36 @@ export async function getMessagesFromIndexedDB(chatId: string): Promise<Message[
   }
 }
 
+export async function updateMessageInIndexedDB(msgId: string, updates: Partial<Message>): Promise<Message | null> {
+  try {
+    const db = await getDB();
+    const tx = db.transaction('messages', 'readwrite');
+    const store = tx.objectStore('messages');
+    const getReq = store.get(msgId);
+    
+    return new Promise((resolve, reject) => {
+      getReq.onsuccess = () => {
+        const existing = getReq.result as Message | undefined;
+        if (!existing) {
+          resolve(null);
+          return;
+        }
+        const updated: Message = {
+          ...existing,
+          ...updates
+        };
+        store.put(updated);
+        tx.oncomplete = () => resolve(updated);
+        tx.onerror = () => reject(tx.error);
+      };
+      getReq.onerror = () => reject(getReq.error);
+    });
+  } catch (err) {
+    console.error('Failed to update message in IndexedDB:', err);
+    return null;
+  }
+}
+
 export async function deleteMessageFromIndexedDB(msgId: string): Promise<void> {
   try {
     const db = await getDB();
